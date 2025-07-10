@@ -2,6 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/tensory.svg)](https://crates.io/crates/tensory) [![Docs.rs](https://docs.rs/tensory/badge.svg)](https://docs.rs/tensory) [![CI](https://github.com/todo-group/tensory/actions/workflows/ci.yml/badge.svg)](https://github.com/yourname/tensory/actions)
 
+![Logo](assets/logo.svg)
+
 **Tensory** is a fast, minimal, and extensible tensor network computation library written in Rust.
 
 ## Features
