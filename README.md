@@ -6,9 +6,6 @@
 
 **Tensory** is a fast, minimal, and extensible tensor network computation library written in Rust.
 
-> [!NOTE]
-> The name **tensory** is already taken by a company, so we need to select the alternative name!
-
 ## Features
 
 - **High performance**: Built with Rust's zero-cost abstractions and efficient memory management.
