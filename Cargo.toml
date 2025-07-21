@@ -4,3 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+ndarray = "0.16.1"
+ndarray-linalg = { version = "0.17.0" }
+blas-src = { version = "0.10", features = ["openblas"] }
+openblas-src = { version = "0.10", features = ["cblas", "system"] }
+
+num-complex = "0.4.6"
+num-traits = "0.2.19"
+uuid = { version = "1.10.0", features = ["v4"] }
+bimap = "0.6.3"
+
+[dev-dependencies]
+anyhow = "1.0.98"
