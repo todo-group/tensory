@@ -28,6 +28,13 @@ macro_rules! v {
     };
 }
 
+#[macro_export]
+macro_rules! rv {
+    ( $( $x:expr => $y:expr),* ) => {
+        [$($crate::core::tensor::LegRefVal(&$x, $y)),*]
+    };
+}
+
 pub struct Tensor<Id: LegId, T: TensorRepr> {
     raw: T,
     // Id should unique
@@ -37,6 +44,13 @@ pub struct Tensor<Id: LegId, T: TensorRepr> {
 impl<Id: LegId, T: TensorRepr> Tensor<Id, T> {
     pub fn from_raw<I: IntoIterator<Item = Id>>(raw: T, legs: I) -> Result<Self, T> {
         let legs: BiHashMap<usize, Id> = legs.into_iter().enumerate().collect();
+        if legs.len() == raw.len() {
+            Ok(Self { raw, legs })
+        } else {
+            Err(raw)
+        }
+    }
+    pub fn from_raw_and_bimap(raw: T, legs: BiHashMap<usize, Id>) -> Result<Self, T> {
         if legs.len() == raw.len() {
             Ok(Self { raw, legs })
         } else {
