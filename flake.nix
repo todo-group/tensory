@@ -20,6 +20,8 @@
           (pkgs.rust-bin.stable.latest.default.override {
             extensions = [ "rust-src" ];
           })
+          pkgs.openblas
+          pkgs.pkg-config
         ];
         zshCompEnv = pkgs.buildEnv {
           name = "zsh-comp";
