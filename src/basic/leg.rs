@@ -33,6 +33,30 @@ impl Id128 {
 
 impl LegId for Id128 {}
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct Tag {
+    raw: String,
+}
+impl fmt::Display for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.raw)
+    }
+}
+
+impl Tag {
+    pub fn from_raw(raw: String) -> Self {
+        Self { raw }
+    }
+    // fn new_with_prime(dim: usize, plv: usize) -> Self {
+    //     Self {
+    //         id: Uuid::new_v4(),
+    //         plv: plv,
+    //     }
+    // }
+}
+
+impl LegId for Tag {}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Prime<Id: LegId> {
     id: Id,
