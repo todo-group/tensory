@@ -7,11 +7,10 @@ use crate::core::tensor::LegId;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Id128 {
     id: Uuid,
-    plv: usize,
 }
 impl fmt::Display for Id128 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}^{}", self.id, self.plv)
+        write!(f, "{}", self.id)
     }
 }
 impl Default for Id128 {
@@ -22,10 +21,7 @@ impl Default for Id128 {
 
 impl Id128 {
     pub fn new() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            plv: 0,
-        }
+        Self { id: Uuid::new_v4() }
     }
     // fn new_with_prime(dim: usize, plv: usize) -> Self {
     //     Self {
