@@ -14,7 +14,6 @@ use ndarray_linalg::{Lapack, Scalar, from_diag, random};
 use num_traits::{ConstZero, Zero};
 
 use crate::{
-    basic::leg,
     core::{
         tensor::{LegId, LegVal, Tensor},
         tensor_repr::{ContractionContext, ContractionIndexProvenance, ElementAccess, TensorRepr},
@@ -160,6 +159,15 @@ impl<'a, E: Lapack + Scalar + ConstZero>
     ) -> Result<(Self::Res, Vec<(ContractionIndexProvenance, usize)>), Self::Err> {
         let lhs_raw = lhs.data;
         let rhs_raw = rhs.data;
+
+        for (idx_l, idx_r) in idxs_contracted.iter() {
+            if *idx_l >= lhs_raw.shape().len()
+                || *idx_r >= rhs_raw.shape().len()
+                || lhs_raw.shape()[*idx_l] != rhs_raw.shape()[*idx_r]
+            {
+                return Err(TenalgError::InvalidInput);
+            }
+        }
 
         let mut x_idxv: Vec<(bool, usize, usize)> =
             (0..lhs_raw.shape().len()).map(|i| (false, 0, i)).collect();
