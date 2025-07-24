@@ -121,7 +121,7 @@ mod tests {
         println!("ii:{:?}", ii);
         assert_eq!(iii1, iii2);
 
-        let k = v![i=>1,j=>2];
+        let k = v![i=>1,&j=>2];
         println!("k: {:?}", k);
     }
 }
