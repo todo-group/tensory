@@ -10,28 +10,59 @@ use super::tensor_repr::{ElementAccess, TensorRepr};
 use std::fmt::Debug;
 use std::hash::Hash;
 
+/// Wrapper trait required to be tensor leg id.
 pub trait LegId: Debug + Eq + Ord + Hash + Clone {
     //type IV: LegIndexRepr<Self>;
     //fn dim(&self) -> usize;
     //fn fix(&self, loc: &Self::L) -> Self::IV;
 }
+/// tuple of LegId and some value
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LegVal<Id: LegId, I>(pub Id, pub I);
 
+/// tuple of LegId reference and some value
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LegRefVal<'a, Id: LegId, I>(pub &'a Id, pub I);
 
-#[macro_export]
-macro_rules! v {
-    ( $( $x:expr => $y:expr),* ) => {
-        [$($crate::core::tensor::LegVal($x.clone(), $y)),*]
-    };
+pub enum _LegWrapper<'a, T: LegId> {
+    Owned(T),
+    Ref(&'a T),
+}
+impl<'a, T: LegId> _LegWrapper<'a, T> {
+    pub fn to_owned(self) -> T {
+        match self {
+            _LegWrapper::Owned(id) => id,
+            _LegWrapper::Ref(id) => id.clone(),
+        }
+    }
+}
+
+impl<'a, T: LegId> From<T> for _LegWrapper<'a, T> {
+    fn from(value: T) -> Self {
+        _LegWrapper::Owned(value)
+    }
+}
+
+impl<'a, T: LegId> From<&'a T> for _LegWrapper<'a, T> {
+    fn from(value: &'a T) -> Self {
+        _LegWrapper::Ref(value)
+    }
 }
 
 #[macro_export]
+/// LegVal list macro
+// here we use converter wrapper to allow both Id and &Id
+macro_rules! v {
+    ( $( $x:expr => $y:expr),* ) => {
+        [$($crate::core::tensor::LegVal($crate::core::tensor::_LegWrapper::from($x).to_owned(), $y)),*]
+    };
+}
+#[macro_export]
+/// LegRefVal list macro
+// &($x) is available both for Id and &Id, thanks to auto deref
 macro_rules! rv {
     ( $( $x:expr => $y:expr),* ) => {
-        [$($crate::core::tensor::LegRefVal(&$x, $y)),*]
+        [$($crate::core::tensor::LegRefVal(&($x), $y)),*]
     };
 }
 
@@ -83,7 +114,7 @@ pub struct TensorMul<Id: LegId, L: TensorRepr, R: TensorRepr> {
 }
 
 impl<Id: LegId, L: TensorRepr, R: TensorRepr> TensorMul<Id, L, R> {
-    pub fn new(lhs: Tensor<Id, L>, rhs: Tensor<Id, R>) -> Self {
+    fn new(lhs: Tensor<Id, L>, rhs: Tensor<Id, R>) -> Self {
         Self { lhs, rhs }
     }
     pub fn by<C: ContractionContext<L, R>>(self, context: C) -> Result<Tensor<Id, C::Res>, C::Err> {
