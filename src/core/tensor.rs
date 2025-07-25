@@ -109,19 +109,19 @@ impl<Id: LegId, T: TensorRepr> Tensor<Id, T> {
 }
 
 pub struct TensorMul<Id: LegId, L: TensorRepr, R: TensorRepr> {
-    lhs: Tensor<Id, L>,
-    rhs: Tensor<Id, R>,
+    lhs: L,
+    rhs: R,
+    lhs_legs: BiHashMap<usize, Id>,
+    rhs_legs: BiHashMap<usize, Id>,
+    idx_pairs: Vec<(usize, usize)>,
 }
 
 impl<Id: LegId, L: TensorRepr, R: TensorRepr> TensorMul<Id, L, R> {
     fn new(lhs: Tensor<Id, L>, rhs: Tensor<Id, R>) -> Self {
-        Self { lhs, rhs }
-    }
-    pub fn by<C: ContractionContext<L, R>>(self, context: C) -> Result<Tensor<Id, C::Res>, C::Err> {
-        let lhs_legs = self.lhs.legs;
-        let rhs_legs = self.rhs.legs;
-        let lhs_raw = self.lhs.raw;
-        let rhs_raw = self.rhs.raw;
+        let lhs_legs = lhs.legs;
+        let rhs_legs = rhs.legs;
+        let lhs = lhs.raw;
+        let rhs = rhs.raw;
 
         let idx_pairs: Vec<(usize, usize)> = lhs_legs
             .iter()
@@ -131,6 +131,21 @@ impl<Id: LegId, L: TensorRepr, R: TensorRepr> TensorMul<Id, L, R> {
                     .map(|rhs_idx| (*lhs_idx, *rhs_idx))
             })
             .collect();
+
+        Self {
+            lhs,
+            rhs,
+            lhs_legs,
+            rhs_legs,
+            idx_pairs,
+        }
+    }
+    pub fn by<C: ContractionContext<L, R>>(self, context: C) -> Result<Tensor<Id, C::Res>, C::Err> {
+        let lhs_legs = self.lhs_legs;
+        let rhs_legs = self.rhs_legs;
+        let lhs_raw = self.lhs;
+        let rhs_raw = self.rhs;
+        let idx_pairs = self.idx_pairs;
 
         let (res, idx_trans) = context.contract(lhs_raw, rhs_raw, &idx_pairs)?;
 
