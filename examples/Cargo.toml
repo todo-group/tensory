@@ -1,0 +1,26 @@
+[package]
+name = "examples"
+version = "0.1.0"
+edition = "2024"
+
+[dev-dependencies]
+tensory-core = { path = "../tensory-core" }
+tensory-basic = { path = "../tensory-basic" }
+tensory-linalg = { path = "../tensory-linalg" }
+tensory-ndarray = { path = "../tensory-ndarray" }
+
+[[example]]
+name = "usage"
+path = "usage.rs"
+
+[[example]]
+name = "dmrg"
+path = "dmrg.rs"
+
+[[example]]
+name = "trg"
+path = "trg.rs"
+
+[[example]]
+name = "btree"
+path = "btree.rs"

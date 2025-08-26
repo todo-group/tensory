@@ -1,0 +1,10 @@
+[package]
+name = "tensory-basic"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tensory-core = { path = "../tensory-core" }
+#tensory-linalg = { path = "../tensory-linalg" }
+uuid = { version = "1.10.0", features = ["v4"] }
+bimap = "0.6.3"

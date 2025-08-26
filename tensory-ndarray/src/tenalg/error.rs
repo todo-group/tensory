@@ -1,5 +1,5 @@
+use core::{error::Error, fmt::Display};
 use ndarray_linalg::error::LinalgError;
-use std::{error::Error, fmt::Display};
 
 #[derive(Debug)]
 pub enum TenalgError {
@@ -9,7 +9,7 @@ pub enum TenalgError {
 }
 
 impl Display for TenalgError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             TenalgError::InvalidInput => {
                 write!(f, "Tenalg received invalid input")

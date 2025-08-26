@@ -2,7 +2,7 @@ use ndarray::{ArrayBase, CowArray, Data, Dimension, Ix2, Order, ShapeArg};
 
 use super::error::TenalgError;
 
-type Result<T> = std::result::Result<T, TenalgError>;
+type Result<T> = core::result::Result<T, TenalgError>;
 
 pub fn ten_to_mat<ST: Data, DT: Dimension, Sh>(
     ten: &ArrayBase<ST, DT>,

@@ -10,9 +10,9 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "anyhow"
-version = "1.0.98"
+version = "1.0.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
 name = "approx"
@@ -167,6 +167,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyload-test"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libloading",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -174,6 +182,16 @@ checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "examples"
+version = "0.1.0"
+dependencies = [
+ "tensory-basic",
+ "tensory-core",
+ "tensory-linalg",
+ "tensory-ndarray",
 ]
 
 [[package]]
@@ -320,6 +338,16 @@ name = "libc"
 version = "0.2.174"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
+
+[[package]]
+name = "libloading"
+version = "0.8.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
+dependencies = [
+ "cfg-if",
+ "windows-targets 0.53.2",
+]
 
 [[package]]
 name = "libredox"
@@ -781,18 +809,41 @@ dependencies = [
 ]
 
 [[package]]
-name = "tensory"
+name = "tensory-basic"
+version = "0.1.0"
+dependencies = [
+ "bimap",
+ "tensory-core",
+ "uuid",
+]
+
+[[package]]
+name = "tensory-core"
+version = "0.1.0"
+dependencies = [
+ "tensory-basic",
+]
+
+[[package]]
+name = "tensory-linalg"
+version = "0.1.0"
+dependencies = [
+ "tensory-core",
+]
+
+[[package]]
+name = "tensory-ndarray"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bimap",
  "blas-src",
  "ndarray",
  "ndarray-linalg",
  "num-complex",
  "num-traits",
  "openblas-src",
- "uuid",
+ "tensory-basic",
+ "tensory-core",
 ]
 
 [[package]]

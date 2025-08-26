@@ -2,6 +2,7 @@ mod convert;
 pub mod cut_filter;
 pub mod error;
 
+use alloc::vec::Vec;
 use convert::{mat_to_ten, ten_to_mat};
 use cut_filter::CutFilter;
 use error::TenalgError;
@@ -12,7 +13,7 @@ use ndarray::{
 use ndarray_linalg::{QR, SVDInto, Scalar, conjugate, svd::SVD};
 use num_traits::{ConstZero, clamp};
 
-type Result<T> = std::result::Result<T, TenalgError>;
+type Result<T> = core::result::Result<T, TenalgError>;
 
 pub fn conj<S: Data, D: Dimension>(x: &ArrayBase<S, D>) -> Result<Array<S::Elem, D>>
 where
@@ -265,6 +266,8 @@ mod tests {
     use ndarray::{Array, ArrayD, Ix5, IxDyn};
     use ndarray_linalg::{Norm, from_diag, random};
     use num_complex::Complex;
+    use std::boxed::Box;
+    use std::println;
     use std::{error, f64::NAN};
     type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 

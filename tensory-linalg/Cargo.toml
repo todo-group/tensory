@@ -1,0 +1,7 @@
+[package]
+name = "tensory-linalg"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tensory-core = { path = "../tensory-core" }
