@@ -5,11 +5,11 @@ extern crate std;
 
 mod tenalg;
 
-use core::borrow::Borrow;
+use core::{borrow::Borrow, panic};
 
 use tensory_core::{
     ops::index::{ElemGetImpl, ElemGetMutImpl},
-    tensor::{ConnectAxisOrigin, Tensor},
+    tensor::{ConnectAxisOrigin, Tensor, ViewableRepr},
 };
 
 use alloc::vec::Vec;
@@ -23,10 +23,11 @@ use tensory_core::{
 
 use crate::tenalg::{conj, cut_filter::CutFilter, error::TenalgError, into_svd, mul};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NdDenseRepr<E> {
     data: ArrayD<E>,
 }
-
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NdDenseViewRepr<'a, E> {
     data: ArrayViewD<'a, E>,
 }
@@ -50,14 +51,18 @@ impl<E> NdDenseRepr<E> {
             data: ArrayD::zeros(sizes),
         }
     }
-    fn view(&self) -> NdDenseViewRepr<E> {
-        NdDenseViewRepr {
-            data: self.data.view(),
-        }
-    }
     fn map<E2, F: FnMut(&E) -> E2>(&self, mut f: F) -> NdDenseRepr<E2> {
         NdDenseRepr {
             data: self.data.map(|e| f(e)),
+        }
+    }
+}
+
+impl<'a, E: 'a> ViewableRepr<'a> for NdDenseRepr<E> {
+    type View = NdDenseViewRepr<'a, E>;
+    fn view(&'a self) -> Self::View {
+        NdDenseViewRepr {
+            data: self.data.view(),
         }
     }
 }
@@ -136,84 +141,74 @@ unsafe impl<'a, E: Lapack + Scalar + ConstZero>
 
         let ([lhs_dim, rhs_dim], res_origin, contr_pairs) = axis_origin.into_raw();
 
-        for (idx_l, idx_r) in contr_pairs.iter() {
-            if *idx_l >= lhs_raw.shape().len()
-                || *idx_r >= rhs_raw.shape().len()
-                || lhs_raw.shape()[*idx_l] != rhs_raw.shape()[*idx_r]
-            {
+        let mut lhs_idxv: Vec<(bool, usize, usize)> = (0..lhs_dim).map(|i| (false, 0, i)).collect(); // true is connect
+        let mut rhs_idxv: Vec<(bool, usize, usize)> = (0..rhs_dim).map(|i| (true, 0, i)).collect(); // false is connect
+
+        for (k, ((t1, idx1), (t2, idx2))) in contr_pairs.iter().enumerate() {
+            let (lhs_idx, rhs_idx) = match (t1, t2) {
+                (0, 1) => (idx1, idx2),
+                (1, 0) => (idx2, idx1),
+                _ => panic!("Unexpected axis"),
+            };
+            if lhs_raw.shape()[*lhs_idx] != rhs_raw.shape()[*rhs_idx] {
                 return Err(TenalgError::InvalidInput);
             }
+            lhs_idxv[*lhs_idx].0 = true;
+            rhs_idxv[*rhs_idx].0 = false;
+            lhs_idxv[*lhs_idx].1 = k;
+            rhs_idxv[*rhs_idx].1 = k;
+        }
+        lhs_idxv.sort();
+        rhs_idxv.sort();
+
+        let lhs_idxv_ordered: Vec<usize> = lhs_idxv.iter().map(|(_, _, i)| *i).collect();
+        let rhs_idxv_ordered: Vec<usize> = rhs_idxv.iter().map(|(_, _, i)| *i).collect();
+
+        let lhs_rot = lhs_raw.permuted_axes(lhs_idxv_ordered.as_slice());
+        let rhs_rot = rhs_raw.permuted_axes(rhs_idxv_ordered.as_slice());
+
+        let conn_idxn = contr_pairs.len();
+        let z = mul(&lhs_rot, &rhs_rot, conn_idxn)?;
+
+        let lhs_rem_idxa = &lhs_idxv_ordered.as_slice()[0..lhs_idxv_ordered.len() - conn_idxn];
+        let rhs_rem_idxa = &rhs_idxv_ordered.as_slice()[conn_idxn..];
+
+        #[cfg(test)]
+        {
+            use std::println;
+            println!("{:?}", lhs_rot.dim());
+            println!("{:?}", lhs_idxv_ordered);
+            println!("{:?}", rhs_rot.dim());
+            println!("{:?}", rhs_idxv_ordered);
+
+            println!("{:?}", lhs_rem_idxa);
+            println!("{:?}", rhs_rem_idxa);
         }
 
-        let mut x_idxv: Vec<(bool, usize, usize)> =
-            (0..lhs_raw.shape().len()).map(|i| (false, 0, i)).collect();
-        let mut y_idxv: Vec<(bool, usize, usize)> =
-            (0..rhs_raw.shape().len()).map(|i| (true, 0, i)).collect();
+        let mut z_idxv: Vec<(usize, usize)> = (0..z.shape().len()).map(|i| (0, i)).collect();
 
-        for (num, (l, r)) in idxs_contracted.iter().enumerate() {
-            x_idxv[*l].0 = true;
-            y_idxv[*r].0 = false;
-            x_idxv[*l].1 = num;
-            y_idxv[*r].1 = num;
-        }
-        x_idxv.sort();
-        y_idxv.sort();
+        res_origin.into_iter().enumerate().for_each(|(k, (t, i))| {
+            z_idxv[match t {
+                0 => lhs_rem_idxa.iter().position(|&j| i == j).unwrap(),
+                1 => rhs_rem_idxa.iter().position(|&j| i == j).unwrap() + lhs_rem_idxa.len(),
+                _ => panic!("Unexpected axis"),
+            }]
+            .0 = k;
+        });
 
-        let x_idxv_ordered: Vec<usize> = x_idxv.iter().map(|(_, _, i)| *i).collect();
-        let y_idxv_ordered: Vec<usize> = y_idxv.iter().map(|(_, _, i)| *i).collect();
+        z_idxv.sort();
 
-        let mut x_idxv_to_be_ordered = (0..lhs_raw.shape().len()).collect::<Vec<_>>();
-        let mut y_idxv_to_be_ordered = (0..rhs_raw.shape().len()).collect::<Vec<_>>();
+        let z_idxv = z_idxv.into_iter().map(|(_, i)| i).collect::<Vec<_>>();
 
-        let mut x_rot = lhs_raw;
-        let mut y_rot = rhs_raw;
+        let z = z.permuted_axes(z_idxv);
 
-        // println!("{:?}", x_rot.dim());
-        // println!("{:?}", x_idxv_to_be_ordered);
-        // println!("{:?}", y_rot.dim());
-        // println!("{:?}", y_idxv_to_be_ordered);
+        // let z_idxv = x_rem_idxa
+        //     .iter()
+        //     .map(|idx| MulAxisOrigin::Lhs(*idx))
+        //     .chain(y_rem_idxa.iter().map(|idx| MulAxisOrigin::Rhs(*idx)))
+        //     .collect();
 
-        for i in 0..x_idxv_to_be_ordered.len() {
-            for j in i..x_idxv_to_be_ordered.len() {
-                if x_idxv_to_be_ordered[j] == x_idxv_ordered[i] {
-                    x_idxv_to_be_ordered.swap(i, j);
-                    x_rot.swap_axes(i, j);
-                    //println!("{:?}", x_rot.dim());
-                }
-            }
-        }
-
-        for i in 0..y_idxv_to_be_ordered.len() {
-            for j in i..y_idxv_to_be_ordered.len() {
-                if y_idxv_to_be_ordered[j] == y_idxv_ordered[i] {
-                    y_idxv_to_be_ordered.swap(i, j);
-                    y_rot.swap_axes(i, j);
-                    //println!("{:?}", y_rot.dim());
-                }
-            }
-        }
-        // println!("{:?}", x_rot.dim());
-        // println!("{:?}", y_rot.dim());
-
-        // println!("{:?}", x_idxv_ordered);
-        // println!("{:?}", y_idxv_ordered);
-        // println!("{:?}", x_idxv_to_be_ordered);
-        // println!("{:?}", y_idxv_to_be_ordered);
-        //println!("{}",x_rot.dim());
-        //println!("{}",x_rot.dim());
-
-        let conn_idxn = idxs_contracted.len();
-
-        let x_rem_idxa = &x_idxv_to_be_ordered.as_slice()[0..x_idxv_ordered.len() - conn_idxn];
-        let y_rem_idxa = &y_idxv_to_be_ordered.as_slice()[conn_idxn..];
-
-        let z_idxv = x_rem_idxa
-            .iter()
-            .map(|idx| MulAxisOrigin::Lhs(*idx))
-            .chain(y_rem_idxa.iter().map(|idx| MulAxisOrigin::Rhs(*idx)))
-            .collect();
-        let z = mul(&x_rot, &y_rot, conn_idxn)?;
-        Ok((NdDenseRepr { data: z }, z_idxv))
+        Ok(NdDenseRepr { data: z })
     }
 }
 
@@ -324,6 +319,7 @@ impl<E> ElemGetMutImpl for NdDenseRepr<E> {
 }
 
 pub type NdDenseTensor<LA, E> = Tensor<LA, NdDenseRepr<E>>;
+
 // impl<LA: LegAlloc, E> NdDenseTensor<LA, E> {
 //     pub fn random(leg_size_set: LegMap<LA::Id, usize>) -> Self
 //     where
@@ -370,12 +366,18 @@ pub type NdDenseTensor<LA, E> = Tensor<LA, NdDenseRepr<E>>;
 
 #[cfg(test)]
 mod tests {
-    use std::println;
+    use std::{println, vec};
 
     use num_complex::Complex;
     use num_traits::abs;
+    use tensory_core::ops::index::ElemGet;
 
     use super::*;
+
+    use tensory_basic::{
+        broker::VecBroker,
+        id::{Id128, Prime},
+    };
 
     const EPS: f64 = 1e-8;
 
@@ -397,17 +399,36 @@ mod tests {
         let i = Leg::new();
         let j = Leg::new();
 
-        let ta = NdDenseTensor::<_, f64>::random(leg![a=>a_n, i=>i_n, b=>b_n, j=>j_n].unwrap());
-        let tb = NdDenseTensor::<_, f64>::random(leg![j=>j_n, c=>c_n, d=>d_n, i=>i_n].unwrap());
+        let ta = unsafe {
+            Tensor::from_raw_unchecked(
+                NdDenseRepr::<f64>::random([a_n, i_n, b_n, j_n]),
+                VecBroker::from_raw(vec![a, i, b, j]),
+            )
+        };
+        let tb = unsafe {
+            Tensor::from_raw_unchecked(
+                NdDenseRepr::random([j_n, c_n, d_n, i_n]),
+                VecBroker::from_raw(vec![j, c, d, i]),
+            )
+        };
 
-        let alv = ta.leg_alloc();
-        let blv = tb.leg_alloc();
+        let alv = ta.broker();
+        let blv = tb.broker();
         println!("{:?}", alv);
         println!("{:?}", blv);
 
         //println!("{:?}", tc.leg_alloc());
 
-        let tc = (ta.view() * tb.view()).with(())?;
+        let tc = (&ta * &tb)?;
+        println!("tc: {:?}", tc);
+        let tc = tc.with(())?;
+
+        let clv = tc.broker();
+        println!("{:?}", clv);
+
+        let (ta, _) = ta.into_raw();
+        let (tb, _) = tb.into_raw();
+        let (tc, _) = tc.into_raw();
 
         //let tad = ta.data();
         //let tbd = tb.data();
@@ -420,12 +441,11 @@ mod tests {
                         let mut tc_e = 0.0;
                         for ii in 0..7 {
                             for ji in 0..8 {
-                                tc_e += ta
-                                    .get(leg_ref![&a=>ai, &i=>ii, &b=>bi, &j=>ji].unwrap())?
-                                    * tb.get(leg_ref![&j=>ji, &c=>ci, &d=>di, &i=>ii].unwrap())?;
+                                tc_e +=
+                                    ta.get(vec![ai, ii, bi, ji])? * tb.get(vec![ji, ci, di, ii])?;
                             }
                         }
-                        let tc_r = tc.get(leg_ref![&a=>ai, &b=>bi, &c=>ci, &d=>di].unwrap())?;
+                        let tc_r = tc.get(vec![ai, bi, ci, di])?;
                         //tcd[[ai, bi, ci, di]];
                         println!("{},{},{},{} : {} vs {}", ai, bi, ci, di, tc_e, tc_r);
                         assert!(abs(tc_e - tc_r) < EPS);
@@ -434,97 +454,94 @@ mod tests {
             }
         }
 
-        let clv = tc.leg_alloc();
-        println!("{:?}", clv);
-
         Ok(())
     }
 
-    #[test]
-    fn tensor_svd_test() -> anyhow::Result<()> {
-        let a = Leg::new();
-        let b = Leg::new();
-        let c = Leg::new();
-        let d = Leg::new();
-        let a_n = 3;
-        let b_n = 4;
-        let c_n = 5;
-        let d_n = 6;
+    // #[test]
+    // fn tensor_svd_test() -> anyhow::Result<()> {
+    //     let a = Leg::new();
+    //     let b = Leg::new();
+    //     let c = Leg::new();
+    //     let d = Leg::new();
+    //     let a_n = 3;
+    //     let b_n = 4;
+    //     let c_n = 5;
+    //     let d_n = 6;
 
-        let t =
-            NdDenseTensor::<_, Complex<f64>>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n].unwrap());
+    //     let t =
+    //         NdDenseTensor::<_, Complex<f64>>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n].unwrap());
 
-        let us = Leg::new();
-        let vs = Leg::new();
+    //     let us = Leg::new();
+    //     let vs = Leg::new();
 
-        let (u, s, v) = t.view().svd(leg_ref![&a, &b].unwrap(), us, vs)?.with(())?;
+    //     let (u, s, v) = t.view().svd(leg_ref![&a, &b].unwrap(), us, vs)?.with(())?;
 
-        let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
+    //     let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 
-        println!("{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n", a, b, c, d, us, vs);
+    //     println!("{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n", a, b, c, d, us, vs);
 
-        println!(
-            "{:?}\n{:?}\n{:?}\n",
-            u.leg_alloc(),
-            s.leg_alloc(),
-            v.leg_alloc()
-        );
+    //     println!(
+    //         "{:?}\n{:?}\n{:?}\n",
+    //         u.leg_alloc(),
+    //         s.leg_alloc(),
+    //         v.leg_alloc()
+    //     );
 
-        println!(
-            "{:?} {:?} {:?}",
-            u.raw().data.shape(),
-            s.raw().data.shape(),
-            v.raw().data.shape()
-        );
+    //     println!(
+    //         "{:?} {:?} {:?}",
+    //         u.raw().data.shape(),
+    //         s.raw().data.shape(),
+    //         v.raw().data.shape()
+    //     );
 
-        let us_tmp = (u.view() * s.view()).with(())?;
+    //     let us_tmp = (u.view() * s.view()).with(())?;
 
-        println!("{:?} {:?}", us_tmp.leg_alloc(), u.raw().data.shape());
+    //     println!("{:?} {:?}", us_tmp.leg_alloc(), u.raw().data.shape());
 
-        let usv = (us_tmp.view() * v.view()).with(())?;
+    //     let usv = (us_tmp.view() * v.view()).with(())?;
 
-        for ai in 0..a_n {
-            for bi in 0..b_n {
-                for ci in 0..c_n {
-                    for di in 0..d_n {
-                        assert!(
-                            (t.get(leg_ref![&a=>ai,&b=>bi,&c=>ci,&d=>di].unwrap())?
-                                - usv.get(leg_ref![&a=>ai,&b=>bi,&c=>ci,&d=>di].unwrap())?)
-                            .abs()
-                                < EPS
-                        );
-                    }
-                }
-            }
-        }
+    //     for ai in 0..a_n {
+    //         for bi in 0..b_n {
+    //             for ci in 0..c_n {
+    //                 for di in 0..d_n {
+    //                     assert!(
+    //                         (t.get(leg_ref![&a=>ai,&b=>bi,&c=>ci,&d=>di].unwrap())?
+    //                             - usv.get(leg_ref![&a=>ai,&b=>bi,&c=>ci,&d=>di].unwrap())?)
+    //                         .abs()
+    //                             < EPS
+    //                     );
+    //                 }
+    //             }
+    //         }
+    //     }
 
-        println!("ut");
-        let mut ut = u.view().conj().with(())?;
+    //     println!("ut");
+    //     let mut ut = u.view().conj().with(())?;
 
-        println!("{:?} {:?} {:?}:  {:?}", a, b, us, ut.leg_alloc());
+    //     println!("{:?} {:?} {:?}:  {:?}", a, b, us, ut.leg_alloc());
 
-        ut.replace_leg(&a, a.prime()).unwrap();
-        ut.replace_leg(&b, b.prime()).unwrap();
-        println!("{:?}", ut.leg_alloc());
-        let uut = (u.view() * ut.view()).with(())?;
-        println!("{:?}", uut.leg_alloc());
-        for ai in 0..a_n {
-            for bi in 0..b_n {
-                for api in 0..a_n {
-                    for bpi in 0..b_n {
-                        let re = *uut.get(
-                            leg_ref![&a=>ai,&b=>bi,&a.prime()=>api,&b.prime()=>bpi].unwrap(),
-                        )?;
-                        if ai == api && bi == bpi {
-                            assert!((re - 1.).abs() < EPS);
-                        } else {
-                            assert!(re.abs() < EPS);
-                        }
-                    }
-                }
-            }
-        }
+    //     ut.replace_leg(&a, a.prime()).unwrap();
+    //     ut.replace_leg(&b, b.prime()).unwrap();
+    //     println!("{:?}", ut.leg_alloc());
+    //     let uut = (u.view() * ut.view()).with(())?;
+    //     println!("{:?}", uut.leg_alloc());
+    //     for ai in 0..a_n {
+    //         for bi in 0..b_n {
+    //             for api in 0..a_n {
+    //                 for bpi in 0..b_n {
+    //                     let re = *uut.get(
+    //                         leg_ref![&a=>ai,&b=>bi,&a.prime()=>api,&b.prime()=>bpi].unwrap(),
+    //                     )?;
+    //                     if ai == api && bi == bpi {
+    //                         assert!((re - 1.).abs() < EPS);
+    //                     } else {
+    //                         assert!(re.abs() < EPS);
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

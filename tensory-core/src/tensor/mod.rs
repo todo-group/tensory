@@ -4,7 +4,7 @@
 mod repr;
 pub use repr::*;
 
-/// broker between local usize axis description (layer 1 description) and global ID axis description (layer 2 description)
+/// broker between local usize axis description (layer 1 description) and global ID axis =: leg description (layer 2 description)
 mod broker;
 pub use broker::*;
 
@@ -12,5 +12,5 @@ pub use broker::*;
 mod tensor;
 pub use tensor::*;
 
-// /// layer 3 tensor concept: layer 2 tensor with executor registered
-// pub mod tensor_with_executor;
+/// layer 3 tensor concept: layer 2 tensor with runtime
+pub mod tensor_with_runtime;

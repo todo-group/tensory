@@ -8,11 +8,23 @@
 //     unsafe { Vec::from_raw_parts(p as _, len, cap) }
 // }
 
+use core::{
+    convert::Infallible,
+    mem::{ManuallyDrop, MaybeUninit},
+};
+
 use alloc::vec::Vec;
 
-use tensory_core::tensor::{ConnectBroker, OverlayBroker, TensorBroker};
+use tensory_core::tensor::{ConnectAxisOrigin, ConnectBroker, OverlayBroker, TensorBroker};
 
-struct VecBroker<T>(Vec<T>);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct VecBroker<T>(Vec<T>);
+impl<T> VecBroker<T> {
+    pub fn from_raw(raw: Vec<T>) -> Self {
+        VecBroker(raw)
+    }
+}
+
 impl<T: Eq + Clone> TensorBroker for VecBroker<T> {
     type Id = T;
 
@@ -21,20 +33,23 @@ impl<T: Eq + Clone> TensorBroker for VecBroker<T> {
     }
 }
 
-unsafe impl<T: Eq + Clone> OverlayBroker<2> for VecBroker<T> {
-    type Err;
+// unsafe impl<T: Eq + Clone> OverlayBroker<2> for VecBroker<T> {
+//     type Err;
 
-    fn overlay(mgrs: [Self; 2]) -> Result<(Self, Vec<[usize; 2]>), Self::Err> {
-        todo!()
-    }
-}
+//     fn overlay(mgrs: [Self; 2]) -> Result<(Self, Vec<[usize; 2]>), Self::Err> {
+//         todo!()
+//     }
+// }
 
 unsafe impl<T: Eq + Clone> ConnectBroker<2> for VecBroker<T> {
-    type Err;
+    type Err = Infallible;
     fn connect(
-        brokers: [Self; 2],
+        [lhs, rhs]: [Self; 2],
     ) -> Result<(Self, tensory_core::tensor::ConnectAxisOrigin<2>), Self::Err> {
-        let pairs: Vec<(usize, usize)> = lhs
+        let lhs_len = lhs.len();
+        let rhs_len = rhs.len();
+
+        let pairs: Vec<_> = lhs
             .0
             .iter()
             .enumerate()
@@ -43,20 +58,46 @@ unsafe impl<T: Eq + Clone> ConnectBroker<2> for VecBroker<T> {
                     .iter()
                     .enumerate()
                     .find(|(_, r_leg)| l_leg == *r_leg)
-                    .map(|(j, _)| (i, j))
+                    .map(|(j, _)| ((0, i), (1, j)))
             })
             .collect();
 
-        let mut lhs_rest = vec_to_maybe_uninit_vec(lhs.0);
-        let mut rhs_rest = vec_to_maybe_uninit_vec(rhs.0);
+        let mut lhs_rest = lhs.0.into_iter().map(|e| Some(e)).collect::<Vec<_>>();
+        let mut rhs_rest = rhs.0.into_iter().map(|e| Some(e)).collect::<Vec<_>>();
 
-        for (i, j) in &pairs {
-            unsafe {
-                lhs_rest[*i].assume_init_drop();
-                rhs_rest[*j].assume_init_drop();
-            }
+        for ((_, i), (_, j)) in pairs.iter() {
+            lhs_rest[*i] = None;
+            rhs_rest[*j] = None;
         }
-        (lhs_rest, rhs_rest, pairs)
+
+        let axis_origin = lhs_rest
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| e.as_ref().map(|_| (0, i)))
+            .chain(
+                rhs_rest
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(j, e)| e.as_ref().map(|_| (1, j))),
+            )
+            .collect();
+
+        let merge = lhs_rest
+            .into_iter()
+            .chain(rhs_rest.into_iter())
+            .flatten()
+            .collect();
+
+        // #[cfg(test)]
+        // {
+        //     std::println!("lhs_len: {}, rhs_len: {}", lhs_len, rhs_len);
+        //     std::println!("axis_origin: {:?}", axis_origin);
+        //     std::println!("pairs: {:?}", pairs);
+        // }
+
+        Ok((VecBroker(merge), unsafe {
+            ConnectAxisOrigin::from_raw_unchecked([lhs_len, rhs_len], axis_origin, pairs)
+        }))
     }
 }
 

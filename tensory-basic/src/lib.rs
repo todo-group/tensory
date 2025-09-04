@@ -4,6 +4,6 @@ extern crate alloc;
 extern crate std;
 
 /// provide AxisMgr with "Leg" concept: Axis identified by object.
-mod id;
+pub mod id;
 
-mod broker;
+pub mod broker;

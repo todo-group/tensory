@@ -8,3 +8,8 @@ pub unsafe trait TensorRepr {
     /// Returns the number of dimensions (axes) of the tensor. The same object must return the same number even through any mutable operations (the only exception is `mem::{swap,replace,take}` operations: these ops semantically don't change objects themselves).
     fn dim(&self) -> usize;
 }
+
+pub trait ViewableRepr<'a> {
+    type View: TensorRepr;
+    fn view(&'a self) -> Self::View;
+}

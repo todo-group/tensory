@@ -63,6 +63,7 @@ pub unsafe trait ConnectBroker<const N: usize>: TensorBroker {
     fn connect(brokers: [Self; N]) -> Result<(Self, ConnectAxisOrigin<N>), Self::Err>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectAxisOrigin<const N: usize> {
     in_lens: [usize; N],
     axis_origin: Vec<(usize, usize)>,

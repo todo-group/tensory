@@ -1,6 +1,8 @@
 use core::ops::Mul;
 
-use crate::tensor::{ConnectAxisOrigin, ConnectBroker, Tensor, TensorBroker, TensorRepr};
+use crate::tensor::{
+    ConnectAxisOrigin, ConnectBroker, Tensor, TensorBroker, TensorRepr, ViewableRepr,
+};
 
 /// Raw context of contraction operation.
 ///
@@ -56,6 +58,7 @@ impl<C: MulCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> MulCtx<Lhs, Rhs>
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TensorMul<M: TensorBroker, L: TensorRepr, R: TensorRepr> {
     lhs: L,
     rhs: R,
@@ -63,12 +66,12 @@ pub struct TensorMul<M: TensorBroker, L: TensorRepr, R: TensorRepr> {
     axis_origin: ConnectAxisOrigin<2>,
 }
 
-impl<M: TensorBroker, L: TensorRepr, R: TensorRepr> TensorMul<M, L, R> {
-    // fn new(lhs: Tensor<LA, L>, rhs: Tensor<LA, R>) -> Self {
+impl<B: TensorBroker, L: TensorRepr, R: TensorRepr> TensorMul<B, L, R> {
+    // pub fn from_raw(lhs: Tensor<B, L>, rhs: Tensor<B, R>) -> Self where B:{
     //     let (lhs, lhs_legs) = lhs.into_raw();
     //     let (rhs, rhs_legs) = rhs.into_raw();
 
-    //     let (intermediate, axis_pairs) = LA::extract(lhs_legs, rhs_legs);
+    //     let (intermediate, axis_pairs) = B::(lhs_legs, rhs_legs);
 
     //     Self {
     //         lhs,
@@ -77,7 +80,7 @@ impl<M: TensorBroker, L: TensorRepr, R: TensorRepr> TensorMul<M, L, R> {
     //         axis_pairs,
     //     }
     // }
-    pub fn with<C: MulCtx<L, R>>(self, context: C) -> Result<Tensor<M, C::Res>, C::Err> {
+    pub fn with<C: MulCtx<L, R>>(self, context: C) -> Result<Tensor<B, C::Res>, C::Err> {
         //println!("lhs: {:?}, rhs: {:?}", lhs_legs, rhs_legs);
         //println!("idx_pairs: {:?}", idx_pairs);
 
@@ -95,6 +98,70 @@ impl<M: ConnectBroker<2>, L: TensorRepr, R: TensorRepr> Mul<Tensor<M, R>> for Te
 
     fn mul(self, rhs: Tensor<M, R>) -> Self::Output {
         let (lhs, lhs_legs) = self.into_raw();
+        let (rhs, rhs_legs) = rhs.into_raw();
+
+        let (res_mgr, axis_origin) = M::connect([lhs_legs, rhs_legs])?;
+
+        Ok(TensorMul {
+            lhs,
+            rhs,
+            res_mgr,
+            axis_origin,
+        })
+    }
+}
+
+impl<'a, M: ConnectBroker<2> + Clone, L: TensorRepr, R: TensorRepr + ViewableRepr<'a>>
+    Mul<&'a Tensor<M, R>> for Tensor<M, L>
+{
+    type Output = Result<TensorMul<M, L, R::View>, M::Err>;
+
+    fn mul(self, rhs: &'a Tensor<M, R>) -> Self::Output {
+        let (lhs, lhs_legs) = self.into_raw();
+        let (rhs, rhs_legs) = rhs.view().into_raw();
+
+        let (res_mgr, axis_origin) = M::connect([lhs_legs, rhs_legs])?;
+
+        Ok(TensorMul {
+            lhs,
+            rhs,
+            res_mgr,
+            axis_origin,
+        })
+    }
+}
+
+impl<
+    'a,
+    M: ConnectBroker<2> + Clone,
+    L: TensorRepr + ViewableRepr<'a>,
+    R: TensorRepr + ViewableRepr<'a>,
+> Mul<&'a Tensor<M, R>> for &'a Tensor<M, L>
+{
+    type Output = Result<TensorMul<M, L::View, R::View>, M::Err>;
+
+    fn mul(self, rhs: &'a Tensor<M, R>) -> Self::Output {
+        let (lhs, lhs_legs) = self.view().into_raw();
+        let (rhs, rhs_legs) = rhs.view().into_raw();
+
+        let (res_mgr, axis_origin) = M::connect([lhs_legs, rhs_legs])?;
+
+        Ok(TensorMul {
+            lhs,
+            rhs,
+            res_mgr,
+            axis_origin,
+        })
+    }
+}
+
+impl<'a, M: ConnectBroker<2> + Clone, L: TensorRepr + ViewableRepr<'a>, R: TensorRepr>
+    Mul<Tensor<M, R>> for &'a Tensor<M, L>
+{
+    type Output = Result<TensorMul<M, L::View, R>, M::Err>;
+
+    fn mul(self, rhs: Tensor<M, R>) -> Self::Output {
+        let (lhs, lhs_legs) = self.view().into_raw();
         let (rhs, rhs_legs) = rhs.into_raw();
 
         let (res_mgr, axis_origin) = M::connect([lhs_legs, rhs_legs])?;

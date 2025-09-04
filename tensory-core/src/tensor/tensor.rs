@@ -1,4 +1,4 @@
-use crate::tensor::{TensorRepr, broker::TensorBroker};
+use crate::tensor::{TensorRepr, ViewableRepr, broker::TensorBroker};
 
 pub struct Tensor<B: TensorBroker, T: TensorRepr> {
     repr: T,
@@ -42,6 +42,14 @@ impl<B: TensorBroker, T: TensorRepr> Tensor<B, T> {
     /// caller must not swap the object
     pub unsafe fn repr_mut(&mut self) -> &mut T {
         &mut self.repr
+    }
+
+    pub fn view<'a>(&'a self) -> Tensor<B, T::View>
+    where
+        B: Clone,
+        T: ViewableRepr<'a>,
+    {
+        unsafe { Tensor::from_raw_unchecked(self.repr().view(), self.broker().clone()) }
     }
 }
 
