@@ -652,3 +652,27 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::println;
+
+    use ndarray::{Array, Ix2};
+    use ndarray_linalg::{SVD, random};
+
+    #[test]
+    fn svd_speedtest() {
+        let x: Array<f64, Ix2> = random([200, 3000]);
+        println!("{:?}", x.shape());
+
+        let pre = chrono::Local::now();
+
+        let x = x.svd(true, true).unwrap();
+
+        let post = chrono::Local::now();
+
+        println!("{}", post - pre);
+
+        panic!();
+    }
+}

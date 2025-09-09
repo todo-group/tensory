@@ -24,3 +24,8 @@ path = "trg.rs"
 [[example]]
 name = "btree"
 path = "btree.rs"
+
+[dependencies]
+anyhow = "1.0.99"
+chrono = "0.4.42"
+num-complex = "0.4.6"

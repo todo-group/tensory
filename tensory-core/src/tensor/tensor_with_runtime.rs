@@ -1,24 +1,32 @@
+use thiserror::Error;
+
 use crate::tensor::{Tensor, TensorBroker, TensorRepr};
 
-pub struct TensorWithRuntime<'rt, B: TensorBroker, R: TensorRepr, RT> {
-    tensor: Tensor<B, R>,
+pub struct TensorWithRuntime<'rt, R: TensorRepr, B: TensorBroker, RT> {
+    tensor: Tensor<R, B>,
     runtime: &'rt RT,
 }
 
-impl<B: TensorBroker, R: TensorRepr> Tensor<B, R> {
-    pub fn bind<'rt, RT>(self, runtime: &'rt RT) -> TensorWithRuntime<'rt, B, R, RT> {
+impl<R: TensorRepr, B: TensorBroker> Tensor<R, B> {
+    pub fn bind<'rt, RT>(self, runtime: &'rt RT) -> TensorWithRuntime<'rt, R, B, RT> {
         TensorWithRuntime::from_raw(self, runtime)
     }
 }
-impl<'rt, B: TensorBroker, R: TensorRepr, RT> TensorWithRuntime<'rt, B, R, RT> {
-    pub fn from_raw(tensor: Tensor<B, R>, runtime: &'rt RT) -> Self {
+impl<'rt, R: TensorRepr, B: TensorBroker, RT> TensorWithRuntime<'rt, R, B, RT> {
+    pub fn from_raw(tensor: Tensor<R, B>, runtime: &'rt RT) -> Self {
         Self { tensor, runtime }
     }
-    pub fn into_raw(self) -> (Tensor<B, R>, &'rt RT) {
+    pub fn into_raw(self) -> (Tensor<R, B>, &'rt RT) {
         (self.tensor, self.runtime)
     }
-    pub fn unbind(self) -> Tensor<B, R> {
+    pub fn unbind(self) -> Tensor<R, B> {
         self.tensor
+    }
+    pub fn tensor(&self) -> &Tensor<R, B> {
+        &self.tensor
+    }
+    pub fn tensor_mut(&mut self) -> &mut Tensor<R, B> {
+        &mut self.tensor
     }
     pub fn runtime(&self) -> &'rt RT {
         self.runtime
@@ -62,3 +70,13 @@ impl<'rt, B: TensorBroker, R: TensorRepr, RT> TensorWithRuntime<'rt, B, R, RT> {
 //         TensorSvd::new(self, u_legs)
 //     }
 // }
+
+#[derive(Error, Debug)]
+pub enum RuntimeError<AE, CE> {
+    #[error("Runtime error")]
+    Runtime,
+    #[error("Axis error: {0}")]
+    Axis(AE),
+    #[error("Context error: {0}")]
+    Ctx(CE),
+}

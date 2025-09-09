@@ -1,10 +1,8 @@
 use core::ops::Add;
 
-use thiserror::Error;
-
 use crate::tensor::{
-    OverlayAxisOrigin, OverlayBroker, Tensor, TensorBroker, TensorRepr,
-    tensor_with_runtime::TensorWithRuntime,
+    OverlayAxisOrigin, OverlayBroker, RuntimeError, Tensor, TensorBroker, TensorRepr,
+    TensorWithRuntime,
 };
 
 /// Raw context of addition operation.
@@ -58,18 +56,18 @@ impl<C: AddCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> AddCtx<Lhs, Rhs>
     }
 }
 
-pub struct TensorAdd<M: TensorBroker, L: TensorRepr, R: TensorRepr> {
+pub struct TensorAdd<L: TensorRepr, R: TensorRepr, B: TensorBroker> {
     lhs: L,
     rhs: R,
     axis_origin: OverlayAxisOrigin<2>,
-    res_mgr: M,
+    res_mgr: B,
 }
-impl<M: TensorBroker, L: TensorRepr, R: TensorRepr> TensorAdd<M, L, R> {
+impl<L: TensorRepr, R: TensorRepr, B: TensorBroker> TensorAdd<L, R, B> {
     pub unsafe fn from_raw_unchecked(
         lhs: L,
         rhs: R,
         axis_origin: OverlayAxisOrigin<2>,
-        res_mgr: M,
+        res_mgr: B,
     ) -> Self {
         Self {
             lhs,
@@ -78,18 +76,18 @@ impl<M: TensorBroker, L: TensorRepr, R: TensorRepr> TensorAdd<M, L, R> {
             res_mgr,
         }
     }
-    pub fn from_raw(lhs: L, rhs: R, axis_origin: OverlayAxisOrigin<2>, res_mgr: M) -> Self {
+    pub fn from_raw(lhs: L, rhs: R, axis_origin: OverlayAxisOrigin<2>, res_broker: B) -> Self {
         let n_l = lhs.dim();
         let n_r = rhs.dim();
         let n = axis_origin.len();
-        let n_m = res_mgr.len();
+        let n_m = res_broker.len();
         if n_l != n || n_r != n || n_m != n {
-            panic!("lhs, rhs, axis_origin, res_mgr must match the number of axes");
+            panic!("lhs, rhs, axis_origin, res_broker must match the number of axes");
         }
-        unsafe { Self::from_raw_unchecked(lhs, rhs, axis_origin, res_mgr) }
+        unsafe { Self::from_raw_unchecked(lhs, rhs, axis_origin, res_broker) }
     }
 
-    pub fn with<C: AddCtx<L, R>>(self, context: C) -> Result<Tensor<M, C::Res>, C::Err> {
+    pub fn with<C: AddCtx<L, R>>(self, context: C) -> Result<Tensor<C::Res, B>, C::Err> {
         Ok(unsafe {
             Tensor::from_raw_unchecked(
                 context.add_unchecked(self.lhs, self.rhs, self.axis_origin)?,
@@ -99,14 +97,14 @@ impl<M: TensorBroker, L: TensorRepr, R: TensorRepr> TensorAdd<M, L, R> {
     }
 }
 
-impl<M: OverlayBroker<2>, L: TensorRepr, R: TensorRepr> Add<Tensor<M, R>> for Tensor<M, L> {
-    type Output = Result<TensorAdd<M, L, R>, M::Err>;
+impl<L: TensorRepr, R: TensorRepr, B: OverlayBroker<2>> Add<Tensor<R, B>> for Tensor<L, B> {
+    type Output = Result<TensorAdd<L, R, B>, B::Err>;
 
-    fn add(self, rhs: Tensor<M, R>) -> Self::Output {
+    fn add(self, rhs: Tensor<R, B>) -> Self::Output {
         let (lhs, lhs_legs) = self.into_raw();
         let (rhs, rhs_legs) = rhs.into_raw();
 
-        let (res_mgr, axis_origin) = M::overlay([lhs_legs, rhs_legs])?;
+        let (res_mgr, axis_origin) = B::overlay([lhs_legs, rhs_legs])?;
 
         Ok(TensorAdd {
             lhs,
@@ -117,37 +115,27 @@ impl<M: OverlayBroker<2>, L: TensorRepr, R: TensorRepr> Add<Tensor<M, R>> for Te
     }
 }
 
-#[derive(Error, Debug)]
-pub enum RuntimeAddError<AE, CE> {
-    #[error("Runtime error")]
-    Runtime,
-    #[error("Axis error: {0}")]
-    Axis(AE),
-    #[error("Context error: {0}")]
-    Ctx(CE),
-}
-
-impl<'rt, B: OverlayBroker<2>, L: TensorRepr, R: TensorRepr, RT: Eq>
-    Add<TensorWithRuntime<'rt, B, R, RT>> for TensorWithRuntime<'rt, B, L, RT>
+impl<'rt, L: TensorRepr, R: TensorRepr, B: OverlayBroker<2>, RT: Eq>
+    Add<TensorWithRuntime<'rt, R, B, RT>> for TensorWithRuntime<'rt, L, B, RT>
 where
     &'rt RT: AddCtxImpl<L, R>,
 {
     type Output = Result<
-        TensorWithRuntime<'rt, B, <&'rt RT as AddCtxImpl<L, R>>::Res, RT>,
-        RuntimeAddError<B::Err, <&'rt RT as AddCtxImpl<L, R>>::Err>,
+        TensorWithRuntime<'rt, <&'rt RT as AddCtxImpl<L, R>>::Res, B, RT>,
+        RuntimeError<B::Err, <&'rt RT as AddCtxImpl<L, R>>::Err>,
     >;
 
-    fn add(self, rhs: TensorWithRuntime<'rt, B, R, RT>) -> Self::Output {
+    fn add(self, rhs: TensorWithRuntime<'rt, R, B, RT>) -> Self::Output {
         let (lhs, lhs_rt) = self.into_raw();
         let (rhs, rhs_rt) = rhs.into_raw();
 
         if lhs_rt != rhs_rt {
-            return Err(RuntimeAddError::Runtime);
+            return Err(RuntimeError::Runtime);
         }
         let res = (lhs + rhs)
-            .map_err(|e| RuntimeAddError::Axis(e))?
+            .map_err(|e| RuntimeError::Axis(e))?
             .with(lhs_rt)
-            .map_err(|e| RuntimeAddError::Ctx(e))?;
+            .map_err(|e| RuntimeError::Ctx(e))?;
         Ok(TensorWithRuntime::from_raw(res, lhs_rt))
     }
 }

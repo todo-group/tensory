@@ -1,11 +1,11 @@
 use core::ops::Mul;
 
-use crate::tensor::{TensorBroker, Tensor, TensorRepr};
+use crate::tensor::{Tensor, TensorBroker, TensorRepr};
 
 /// Raw context of left scalar multiplication operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
-pub trait LeftScalarMulContext<A: TensorRepr, E> {
+pub unsafe trait LeftScalarMulContext<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
@@ -19,13 +19,13 @@ pub trait LeftScalarMulContext<A: TensorRepr, E> {
     fn left_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorLeftScalarMul<M: TensorBroker, A: TensorRepr, E> {
+pub struct TensorLeftScalarMul<A: TensorRepr, B: TensorBroker, E> {
     a: A,
     scalar: E,
-    res_mgr: M,
+    res_broker: B,
 }
 
-impl<M: TensorBroker, A: TensorRepr, E> TensorLeftScalarMul<M, A, E> {
+impl<A: TensorRepr, B: TensorBroker, E> TensorLeftScalarMul<A, B, E> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -33,20 +33,20 @@ impl<M: TensorBroker, A: TensorRepr, E> TensorLeftScalarMul<M, A, E> {
     pub fn with<C: LeftScalarMulContext<A, E>>(
         self,
         context: C,
-    ) -> Result<Tensor<M, C::Res>, C::Err> {
+    ) -> Result<Tensor<C::Res, B>, C::Err> {
         let a = self.a;
         let scalar = self.scalar;
 
         let aconj = context.left_scalar_mul(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mgr) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
     }
 }
 
 /// Raw context of right scalar multiplication operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
-pub trait RightScalarMulContext<A: TensorRepr, E> {
+pub unsafe trait RightScalarMulContext<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
@@ -60,13 +60,13 @@ pub trait RightScalarMulContext<A: TensorRepr, E> {
     fn right_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorRightScalarMul<M: TensorBroker, A: TensorRepr, E> {
+pub struct TensorRightScalarMul<A: TensorRepr, B: TensorBroker, E> {
     a: A,
     scalar: E,
-    res_mgr: M,
+    res_broker: B,
 }
 
-impl<M: TensorBroker, A: TensorRepr, E> TensorRightScalarMul<M, A, E> {
+impl<A: TensorRepr, B: TensorBroker, E> TensorRightScalarMul<A, B, E> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -74,20 +74,20 @@ impl<M: TensorBroker, A: TensorRepr, E> TensorRightScalarMul<M, A, E> {
     pub fn with<C: RightScalarMulContext<A, E>>(
         self,
         context: C,
-    ) -> Result<Tensor<M, C::Res>, C::Err> {
+    ) -> Result<Tensor<C::Res, B>, C::Err> {
         let a = self.a;
         let scalar = self.scalar;
 
         let aconj = context.right_scalar_mul(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mgr) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
     }
 }
 
 /// Raw context of scalar multiplication operation. (no left/right)
 ///
 /// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
-pub trait CommutativeScalarMulContext<A: TensorRepr, E> {
+pub unsafe trait CommutativeScalarMulContext<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
@@ -100,7 +100,9 @@ pub trait CommutativeScalarMulContext<A: TensorRepr, E> {
     /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
-impl<A: TensorRepr, E, C: CommutativeScalarMulContext<A, E>> LeftScalarMulContext<A, E> for C {
+unsafe impl<A: TensorRepr, E, C: CommutativeScalarMulContext<A, E>> LeftScalarMulContext<A, E>
+    for C
+{
     type Res = C::Res;
     type Err = C::Err;
 
@@ -108,7 +110,9 @@ impl<A: TensorRepr, E, C: CommutativeScalarMulContext<A, E>> LeftScalarMulContex
         self.scalar_mul(a, scalar)
     }
 }
-impl<A: TensorRepr, E, C: CommutativeScalarMulContext<A, E>> RightScalarMulContext<A, E> for C {
+unsafe impl<A: TensorRepr, E, C: CommutativeScalarMulContext<A, E>> RightScalarMulContext<A, E>
+    for C
+{
     type Res = C::Res;
     type Err = C::Err;
 
@@ -117,39 +121,37 @@ impl<A: TensorRepr, E, C: CommutativeScalarMulContext<A, E>> RightScalarMulConte
     }
 }
 
-impl<M: TensorBroker, T: TensorRepr> Tensor<M, T> {
-    pub fn left_mul<E>(self, lhs: E) -> TensorLeftScalarMul<M, T, E> {
-        let (a, mgr) = self.into_raw();
+impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
+    pub fn left_mul<E>(self, lhs: E) -> TensorLeftScalarMul<A, B, E> {
+        let (a, broker) = self.into_raw();
         TensorLeftScalarMul {
             a,
             scalar: lhs,
-            res_mgr: mgr,
+            res_broker: broker,
         }
     }
-    pub fn right_mul<E>(self, lhs: E) -> TensorRightScalarMul<M, T, E> {
-        let (a, mgr) = self.into_raw();
+    pub fn right_mul<E>(self, rhs: E) -> TensorRightScalarMul<A, B, E> {
+        let (a, broker) = self.into_raw();
         TensorRightScalarMul {
             a,
-            scalar: lhs,
-            res_mgr: mgr,
+            scalar: rhs,
+            res_broker: broker,
         }
     }
 }
 
-trait TensorScalar {}
+impl<A: TensorRepr, B: TensorBroker, E> Mul<(E,)> for Tensor<A, B> {
+    type Output = TensorRightScalarMul<A, B, E>;
 
-impl<M: TensorBroker, A: TensorRepr, E: TensorScalar> Mul<E> for Tensor<M, A> {
-    type Output = TensorRightScalarMul<M, A, E>;
-
-    fn mul(self, rhs: E) -> Self::Output {
-        self.right_mul(rhs)
+    fn mul(self, rhs: (E,)) -> Self::Output {
+        self.right_mul(rhs.0)
     }
 }
 
-// impl<M: AxisMgr, A: TensorRepr, E: TensorScalar> Mul<Tensor<M, A>> for E {
-//     type Output = TensorLeftScalarMul<M, A, E>;
+impl<A: TensorRepr, B: TensorBroker, E> Mul<Tensor<A, B>> for (E,) {
+    type Output = TensorLeftScalarMul<A, B, E>;
 
-//     fn mul(self, rhs: Tensor<M, A>) -> Self::Output {
-//         rhs.left_mul(self)
-//     }
-// }
+    fn mul(self, rhs: Tensor<A, B>) -> Self::Output {
+        rhs.left_mul(self.0)
+    }
+}

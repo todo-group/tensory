@@ -3,7 +3,8 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
-/// provide AxisMgr with "Leg" concept: Axis identified by object.
+/// provide itensor-like Id
 pub mod id;
 
+/// provide referencial TensorBroker implementations
 pub mod broker;

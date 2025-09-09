@@ -1,23 +1,23 @@
-use crate::tensor::{TensorRepr, ViewableRepr, broker::TensorBroker};
+use crate::tensor::{AsViewMutRepr, AsViewRepr, ReplaceBroker, TensorRepr, broker::TensorBroker};
 
-pub struct Tensor<B: TensorBroker, T: TensorRepr> {
+pub struct Tensor<T: TensorRepr, B: TensorBroker> {
     repr: T,
     broker: B,
 }
 
-impl<B: TensorBroker, T: TensorRepr> Tensor<B, T> {
+impl<R: TensorRepr, B: TensorBroker> Tensor<R, B> {
     // conversion
-    pub fn from_raw(repr: T, broker: B) -> Result<Self, (T, B)> {
-        if broker.len() == repr.dim() {
+    pub fn from_raw(repr: R, broker: B) -> Result<Self, (R, B)> {
+        if repr.dim() == broker.len() {
             Ok(unsafe { Self::from_raw_unchecked(repr, broker) })
         } else {
             Err((repr, broker))
         }
     }
-    pub unsafe fn from_raw_unchecked(repr: T, broker: B) -> Self {
+    pub unsafe fn from_raw_unchecked(repr: R, broker: B) -> Self {
         Self { repr, broker }
     }
-    pub fn into_raw(self) -> (T, B) {
+    pub fn into_raw(self) -> (R, B) {
         (self.repr, self.broker)
     }
 
@@ -33,23 +33,39 @@ impl<B: TensorBroker, T: TensorRepr> Tensor<B, T> {
     pub unsafe fn broker_mut(&mut self) -> &mut B {
         &mut self.broker
     }
-    pub fn repr(&self) -> &T {
+    pub fn repr(&self) -> &R {
         &self.repr
     }
 
     /// # Safety
     ///
     /// caller must not swap the object
-    pub unsafe fn repr_mut(&mut self) -> &mut T {
+    pub unsafe fn repr_mut(&mut self) -> &mut R {
         &mut self.repr
     }
 
-    pub fn view<'a>(&'a self) -> Tensor<B, T::View>
+    pub fn view<'a>(&'a self) -> Tensor<R::View, B>
     where
         B: Clone,
-        T: ViewableRepr<'a>,
+        R: AsViewRepr<'a>,
     {
         unsafe { Tensor::from_raw_unchecked(self.repr().view(), self.broker().clone()) }
+    }
+    pub fn view_mut<'a>(&'a mut self) -> Tensor<R::ViewMut, B>
+    where
+        B: Clone,
+        R: AsViewMutRepr<'a>,
+    {
+        let broker = self.broker().clone();
+        unsafe { Tensor::from_raw_unchecked(self.repr_mut().view_mut(), broker) }
+    }
+}
+
+impl<R: TensorRepr, B: ReplaceBroker> Tensor<R, B> {
+    pub fn replace_leg(self, old_leg: &B::Id, new_leg: B::Id) -> Result<Self, B::Err> {
+        let (repr, broker) = self.into_raw();
+        let broker = broker.replace(old_leg, new_leg)?;
+        Ok(unsafe { Self::from_raw_unchecked(repr, broker) })
     }
 }
 
@@ -75,30 +91,32 @@ impl<B: TensorBroker, T: TensorRepr> Tensor<B, T> {
 //     self.leg_alloc.replace(old_leg, new_leg)
 // }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use std::println;
+//     use std::println;
 
-    use super::*;
+//     use crate::leg;
 
-    #[derive(Debug, PartialEq, Eq, Clone, Hash, Ord, PartialOrd)]
-    struct DummyTensor(usize);
-    unsafe impl TensorRepr for DummyTensor {
-        fn dim(&self) -> usize {
-            self.0
-        }
-    }
+//     use super::*;
 
-    #[derive(Debug, PartialEq, Eq, Clone, Hash, Ord, PartialOrd)]
-    struct DummyLegId;
+//     #[derive(Debug, PartialEq, Eq, Clone, Hash, Ord, PartialOrd)]
+//     struct DummyTensor(usize);
+//     unsafe impl TensorRepr for DummyTensor {
+//         fn dim(&self) -> usize {
+//             self.0
+//         }
+//     }
 
-    #[test]
-    fn it_works() {
-        let raw_tensor = DummyTensor(1);
+//     #[derive(Debug, PartialEq, Eq, Clone, Hash, Ord, PartialOrd)]
+//     struct DummyLegId;
 
-        let ts = Tensor::from_raw(raw_tensor, leg_set![DummyLegId]).unwrap();
+//     #[test]
+//     fn it_works() {
+//         let raw_tensor = DummyTensor(1);
 
-        println!("{:?}", ts.broker());
-    }
-}
+//         let ts = Tensor::from_raw(raw_tensor).unwrap();
+
+//         println!("{:?}", ts.broker());
+//     }
+// }

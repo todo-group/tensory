@@ -1,16 +1,20 @@
-use alloc::vec::Vec;
-use tensory_core::tensor::{DecompAxisOrigin, Tensor, TensorBroker, TensorRepr};
+use alloc::vec;
+
+use tensory_core::tensor::{
+    AsViewRepr, DecompConf, DecompError, DecompGroupedBroker, GroupBroker, GroupedAxes, Tensor,
+    TensorBroker, TensorRepr,
+};
 
 /// Raw context of SVD operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the list of `SvdAxisProvenance` is valid for the given tensor.
 pub unsafe trait SvdContextImpl<A: TensorRepr> {
     /// The type of the result tensor representation corresponding U.
-    type U: TensorRepr;
+    type U: TensorRepr; // a, <from A for U>
     /// The type of the result tensor representation corresponding S.
-    type S: TensorRepr;
+    type S: TensorRepr; // a,b
     /// The type of the result tensor representation corresponding V.
-    type V: TensorRepr;
+    type V: TensorRepr; // b, <from A for V>
     /// The type of the error returned by the context. (considered as internal error)
     type Err;
 
@@ -24,9 +28,7 @@ pub unsafe trait SvdContextImpl<A: TensorRepr> {
     unsafe fn svd_unchecked(
         self,
         a: A,
-        u_axes: &[DecompAxisOrigin],
-        s_axes: &[DecompAxisOrigin],
-        v_axes: &[DecompAxisOrigin],
+        axes_split: GroupedAxes<2>,
     ) -> Result<(Self::U, Self::S, Self::V), Self::Err>;
 }
 
@@ -34,37 +36,31 @@ pub unsafe trait SvdContextImpl<A: TensorRepr> {
 ///
 /// The blanket implementation checks both input and output.
 pub trait SvdContext<A: TensorRepr>: SvdContextImpl<A> {
-    fn svd(self, a: A, u_axes: &[usize]) -> Result<(Self::U, Self::S, Self::V), Self::Err>;
+    fn svd(
+        self,
+        a: A,
+        axes_split: GroupedAxes<2>,
+    ) -> Result<(Self::U, Self::S, Self::V), Self::Err>;
 }
 impl<C: SvdContextImpl<A>, A: TensorRepr> SvdContext<A> for C {
     fn svd(
         self,
         a: A,
-        u_axes: &[usize],
-    ) -> Result<
-        (
-            Self::U,
-            Self::S,
-            Self::V,
-            Vec<SvdIsometryAxisProvenance>,
-            SvdSingularAxisOrder,
-            Vec<SvdIsometryAxisProvenance>,
-        ),
-        Self::Err,
-    > {
-        // TODO check input and output
-        // if input invalid {
-        //     panic!();
-        // }
-        unsafe { self.svd_unchecked(a, u_axes) }
+        axes_split: GroupedAxes<2>,
+    ) -> Result<(Self::U, Self::S, Self::V), Self::Err> {
+        if a.dim() != axes_split.len() {
+            panic!("Incompatible tensor dimensions");
+        }
+        unsafe { self.svd_unchecked(a, axes_split) }
     }
 }
 
-pub struct TensorSvd<Set, LA: SvdLegAlloc<Set>, A: TensorRepr> {
+pub struct TensorSvd<A: TensorRepr, B: TensorBroker> {
     a: A,
-    u_axes: Vec<usize>,
-    intermediate: LA::Intermediate,
-    //legs: Vec<MaybeUninit<LA::Id>>,
+    u_legs: B,
+    s_legs: B,
+    v_legs: B,
+    axes_split: GroupedAxes<2>,
 }
 
 // pub unsafe trait SvdLegAlloc<Set>: LegAlloc {
@@ -87,85 +83,178 @@ pub struct TensorSvd<Set, LA: SvdLegAlloc<Set>, A: TensorRepr> {
 //         Self: Sized;
 // }
 
-impl<Set, LA: SvdLegAlloc<Set>, A: TensorRepr> TensorSvd<Set, LA, A> {
-    pub fn new(
-        a: Tensor<LA, A>,
-        u_legs: Set,
-        u_us_leg: LA::Id,
-        s_us_leg: LA::Id,
-        s_sv_leg: LA::Id,
-        v_sv_leg: LA::Id,
-    ) -> Self {
-        let (raw, legs) = a.into_raw();
+impl<A: TensorRepr, B: TensorBroker> TensorSvd<A, B> {
+    // pub fn new<Q>(
+    //     a: Tensor<A, B>,
+    //     queue: Q,
+    //     s_us_leg: B::Id,
+    //     s_sv_leg: B::Id,
+    //     v_sv_leg: B::Id,
+    // ) -> Self {
+    //     let (raw, legs) = a.into_raw();
 
-        let (intermediate, u_axes) =
-            LA::extract(legs, u_legs, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg);
+    //     let (intermediate, u_axes) =
+    //         LA::extract(legs, u_legs, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg);
 
-        Self {
-            a: raw,
-            intermediate,
-            u_axes: u_axes,
-        }
-    }
+    //     Self {
+    //         a: raw,
+    //         intermediate,
+    //         u_axes: u_axes,
+    //     }
+    // }
     pub fn with<C: SvdContext<A>>(
         self,
         context: C,
-    ) -> Result<(Tensor<LA, C::U>, Tensor<LA, C::S>, Tensor<LA, C::V>), C::Err> {
+    ) -> Result<(Tensor<C::U, B>, Tensor<C::S, B>, Tensor<C::V, B>), C::Err> {
         let a = self.a;
-        let intermediate = self.intermediate;
-        let u_axes = self.u_axes;
+        let axes_split = self.axes_split;
 
-        let (u, s, v, u_alloc, s_order, v_alloc) = unsafe { context.svd_unchecked(a, &u_axes) }?;
-
-        let (u_legs, s_legs, v_legs) =
-            unsafe { LA::merge(intermediate, u_alloc, s_order, v_alloc) };
+        let (u, s, v) = unsafe { context.svd_unchecked(a, axes_split) }?;
 
         Ok((
-            unsafe { Tensor::from_raw_unchecked(u, u_legs) },
-            unsafe { Tensor::from_raw_unchecked(s, s_legs) },
-            unsafe { Tensor::from_raw_unchecked(v, v_legs) },
+            unsafe { Tensor::from_raw_unchecked(u, self.u_legs) },
+            unsafe { Tensor::from_raw_unchecked(s, self.s_legs) },
+            unsafe { Tensor::from_raw_unchecked(v, self.v_legs) },
         ))
     }
 }
 
-trait TensorSvdExt<LA: SvdLegAlloc<Set>, Set>
-where
-    LA::Id: Clone,
-{
-    fn svd_with_more_ids<Set>(
+pub trait TensorSvdExt<A: TensorRepr, B: TensorBroker>: Sized {
+    fn svd_with_more_ids<Q>(
         self,
-        set: Set,
-        u_us_leg: LA::Id,
-        s_us_leg: LA::Id,
-        s_sv_leg: LA::Id,
-        v_sv_leg: LA::Id,
-    ) -> TensorSvd<Set, LA, T>
+        set: Q,
+        u_us_leg: B::Id,
+        s_us_leg: B::Id,
+        s_sv_leg: B::Id,
+        v_sv_leg: B::Id,
+    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedBroker<2, 3>>::Err>>
     where
-        LA: SvdLegAlloc<Set>,
-    {
-        TensorSvd::new(self, set, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg)
-    }
+        B: GroupBroker<2, Q>,
+        B::Grouped: DecompGroupedBroker<2, 3>;
+    fn svd<Q>(
+        self,
+        set: Q,
+        us_leg: B::Id,
+        sv_leg: B::Id,
+    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedBroker<2, 3>>::Err>>
+    where
+        B: GroupBroker<2, Q>,
+        B::Grouped: DecompGroupedBroker<2, 3>,
+        B::Id: Clone;
 }
 
-impl<M: TensorBroker, T: TensorRepr> Tensor<M, T> {
-    pub fn svd_with_more_ids<Set>(
+impl<A: TensorRepr, B: TensorBroker> TensorSvdExt<A, B> for Tensor<A, B> {
+    fn svd_with_more_ids<Q>(
         self,
-        set: Set,
-        u_us_leg: LA::Id,
-        s_us_leg: LA::Id,
-        s_sv_leg: LA::Id,
-        v_sv_leg: LA::Id,
-    ) -> TensorSvd<Set, LA, T>
+        queue: Q,
+        u_us_leg: B::Id,
+        s_us_leg: B::Id,
+        s_sv_leg: B::Id,
+        v_sv_leg: B::Id,
+    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedBroker<2, 3>>::Err>>
     where
-        LA: SvdLegAlloc<Set>,
+        B: GroupBroker<2, Q>,
+        B::Grouped: DecompGroupedBroker<2, 3>,
     {
-        TensorSvd::new(self, set, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg)
+        let (raw, legs) = self.into_raw();
+        let (grouped, axes_split) = legs.split(queue).map_err(|e| DecompError::Split(e))?;
+        let [u_legs, s_legs, v_legs] = unsafe {
+            grouped.decomp(DecompConf::from_raw_unchecked(
+                [0, 2],
+                vec![
+                    ((0, u_us_leg), (1, s_us_leg)),
+                    ((1, s_sv_leg), (2, v_sv_leg)),
+                ],
+            ))
+        }
+        .map_err(|e| DecompError::Decomp(e))?;
+        Ok(TensorSvd {
+            a: raw,
+            u_legs,
+            s_legs,
+            v_legs,
+            axes_split,
+        })
     }
-    pub fn svd<Set>(self, set: Set, us_leg: LA::Id, sv_leg: LA::Id) -> TensorSvd<Set, LA, T>
+    fn svd<Q>(
+        self,
+        set: Q,
+        us_leg: B::Id,
+        sv_leg: B::Id,
+    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedBroker<2, 3>>::Err>>
     where
-        LA: SvdLegAlloc<Set>,
-        LA::Id: Clone,
+        B: GroupBroker<2, Q>,
+        B::Grouped: DecompGroupedBroker<2, 3>,
+        B::Id: Clone,
     {
-        TensorSvd::new(self, set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
+        self.svd_with_more_ids(set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
     }
+    // pub fn svd<Set>(self, set: Set, us_leg: B::Id, sv_leg: B::Id) -> TensorSvd<Set, B>
+    // where
+    //     LA: SvdLegAlloc<Set>,
+    //     LA::Id: Clone,
+    // {
+    //     TensorSvd::new(self, set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
+    // }
+}
+
+impl<'a, A: AsViewRepr<'a>, B: TensorBroker + Clone> TensorSvdExt<A::View, B> for &'a Tensor<A, B> {
+    fn svd_with_more_ids<Q>(
+        self,
+        queue: Q,
+        u_us_leg: B::Id,
+        s_us_leg: B::Id,
+        s_sv_leg: B::Id,
+        v_sv_leg: B::Id,
+    ) -> Result<
+        TensorSvd<A::View, B>,
+        DecompError<B::Err, <B::Grouped as DecompGroupedBroker<2, 3>>::Err>,
+    >
+    where
+        B: GroupBroker<2, Q>,
+        B::Grouped: DecompGroupedBroker<2, 3>,
+    {
+        let (raw, legs) = self.view().into_raw();
+        let (grouped, axes_split) = legs.split(queue).map_err(|e| DecompError::Split(e))?;
+        let [u_legs, s_legs, v_legs] = unsafe {
+            grouped.decomp(DecompConf::from_raw_unchecked(
+                [0, 2],
+                vec![
+                    ((0, u_us_leg), (1, s_us_leg)),
+                    ((1, s_sv_leg), (2, v_sv_leg)),
+                ],
+            ))
+        }
+        .map_err(|e| DecompError::Decomp(e))?;
+        Ok(TensorSvd {
+            a: raw,
+            u_legs,
+            s_legs,
+            v_legs,
+            axes_split,
+        })
+    }
+    fn svd<Q>(
+        self,
+        set: Q,
+        us_leg: B::Id,
+        sv_leg: B::Id,
+    ) -> Result<
+        TensorSvd<A::View, B>,
+        DecompError<B::Err, <B::Grouped as DecompGroupedBroker<2, 3>>::Err>,
+    >
+    where
+        B: GroupBroker<2, Q>,
+        B::Grouped: DecompGroupedBroker<2, 3>,
+        B::Id: Clone,
+    {
+        self.svd_with_more_ids(set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
+    }
+    // pub fn svd<Set>(self, set: Set, us_leg: B::Id, sv_leg: B::Id) -> TensorSvd<Set, B>
+    // where
+    //     LA: SvdLegAlloc<Set>,
+    //     LA::Id: Clone,
+    // {
+    //     TensorSvd::new(self, set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
+    // }
 }

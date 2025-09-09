@@ -17,28 +17,28 @@ pub unsafe trait NegationContext<A: TensorRepr> {
     fn negate(self, a: A) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorNeg<M: TensorBroker, A: TensorRepr> {
+pub struct TensorNeg<A: TensorRepr, B: TensorBroker> {
     a: A,
-    res_mgr: M,
+    res_broker: B,
 }
 
-impl<M: TensorBroker, A: TensorRepr> TensorNeg<M, A> {
+impl<A: TensorRepr, B: TensorBroker> TensorNeg<A, B> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
     // }
-    pub fn with<C: NegationContext<A>>(self, context: C) -> Result<Tensor<M, C::Res>, C::Err> {
+    pub fn with<C: NegationContext<A>>(self, context: C) -> Result<Tensor<C::Res, B>, C::Err> {
         let a = self.a;
 
         let aneg = context.negate(a)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aneg, self.res_mgr) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aneg, self.res_broker) })
     }
 }
 
-impl<M: TensorBroker, T: TensorRepr> Tensor<M, T> {
-    pub fn neg(self) -> TensorNeg<M, T> {
+impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
+    pub fn neg(self) -> TensorNeg<A, B> {
         let (a, mgr) = self.into_raw();
-        TensorNeg { a, res_mgr: mgr }
+        TensorNeg { a, res_broker: mgr }
     }
 }

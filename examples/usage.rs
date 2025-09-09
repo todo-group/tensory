@@ -1,9 +1,20 @@
-use num_complex::Complex;
-use tensory::{
-    basic::leg::{Id128, Prime},
-    nd_dense::NdDenseTensor,
+//use num_complex::Complex;
+// use tensory::{
+//     basic::leg::{Id128, Prime},
+//     nd_dense::NdDenseTensor,
+// };
+
+use tensory_basic::{
+    broker::VecBroker,
+    id::{Id128, Prime},
 };
+use tensory_linalg::svd::TensorSvdExt;
+use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt};
+
+use tensory_core::leg;
+
 type Leg = Prime<Id128>;
+type Tensor<E> = NdDenseTensor<E, VecBroker<Leg>>;
 
 fn main() -> anyhow::Result<()> {
     // resource allocation aware
@@ -18,20 +29,34 @@ fn main() -> anyhow::Result<()> {
     let e = Leg::new();
     let f = Leg::new();
 
-    // allocation aware syntax
-    let ta = NdDenseTensor::<_, Complex<f64>>::zero(leg![a=>1, b=>2, c=>3, d=>4].unwrap());
-    let tb = NdDenseTensor::zero(leg![c=>3, d=>4, e=>5, f=>6].unwrap());
-    //let tc = NdDenseTensor::zero(v![a=>1, b=>2, e=>5, f=>6]);
+    let a_n = 10;
+    let b_n = 20;
+    let c_n = 30;
+    let d_n = 40;
+    let e_n = 50;
+    let f_n = 60;
 
-    let tx = (ta.view() * tb.view()).with(())?;
+    // allocation aware syntax
+    let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n]).unwrap();
+    let tb = Tensor::random(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n]).unwrap();
+    //let tc = Tensor::zero(v![a=>1, b=>2, e=>5, f=>6]);
+
+    let tx = (&ta * &tb)?.with(())?;
 
     let us_leg = Leg::new();
     let vs_leg = Leg::new();
 
-    let (_u, _s, _v) = tx
-        .view()
-        .svd(leg_ref![&a, &b].unwrap(), us_leg, vs_leg)?
-        .with(())?;
+    let tx = Tensor::<f64>::random(leg![a=>30, b=>30, e=>30, f=>30]).unwrap();
+
+    let svd = tx.view().svd(leg![&a, &b], us_leg, vs_leg)?;
+
+    let pre = chrono::Local::now();
+
+    let (_u, _s, _v) = svd.with(((),))?;
+
+    let post = chrono::Local::now();
+
+    println!("{}", post - pre);
 
     //svd(A, [a, b, c], us, sv);
 

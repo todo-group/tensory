@@ -1,5 +1,6 @@
 use std::ffi::{CStr, c_char, c_double, c_int};
 
+// from openblas-sys
 type DgemmFn = unsafe extern "C" fn(
     transa: *const c_char,
     transb: *const c_char,
@@ -60,6 +61,8 @@ fn main() -> anyhow::Result<()> {
         let dgemm: libloading::Symbol<DgemmFn> = lib.get(b"dgemm_")?;
 
         let get_config: libloading::Symbol<GetConfigFn> = lib.get(b"openblas_get_config")?;
+        // plan: reading the config string, the blas runtime creation may fail (prevent unsound runtime generation)
+        // e.g. BlasRuntime<generics>(lib)?;
 
         let x = CStr::from_ptr(get_config());
         println!("OpenBLAS config: {}", x.to_str()?);

@@ -1,9 +1,9 @@
 use alloc::vec::Vec;
 
-use crate::tensor::{Tensor, TensorBroker, TensorRepr, TranslateMgr};
+use crate::tensor::{LegMapArg, Tensor, TensorBroker, TensorRepr, TranslateBroker};
 
 /// Tensor representation providing immutable element access, WITHOUT checking the number of indices.
-pub trait ElemGetImpl: TensorRepr {
+pub trait ElemGetReprImpl: TensorRepr {
     type Index;
     type E;
     type Err;
@@ -12,7 +12,7 @@ pub trait ElemGetImpl: TensorRepr {
 }
 
 /// Tensor representation providing mutable element access, WITHOUT checking the number of indices.
-pub trait ElemGetMutImpl: ElemGetImpl {
+pub trait ElemGetMutReprImpl: ElemGetReprImpl {
     /// Returns the mutable reference to the element at the given indices, WITHOUT checking the number of indices.
     unsafe fn get_mut_unchecked(
         &mut self,
@@ -23,10 +23,10 @@ pub trait ElemGetMutImpl: ElemGetImpl {
 /// Safe version of `ElementAccessImpl`.
 ///
 /// The blanket implementation checks the number of indices.
-pub trait ElemGet: ElemGetImpl {
+pub trait ElemGetRepr: ElemGetReprImpl {
     fn get(&self, indices: Vec<Self::Index>) -> Result<&Self::E, Self::Err>;
 }
-impl<T: ElemGetImpl> ElemGet for T {
+impl<T: ElemGetReprImpl> ElemGetRepr for T {
     fn get(&self, indices: Vec<Self::Index>) -> Result<&Self::E, Self::Err> {
         // TODO: check number of indices
         // if number of indices invalid {
@@ -39,10 +39,10 @@ impl<T: ElemGetImpl> ElemGet for T {
 /// Safe version of `ElementAccessImpl`.
 ///
 /// The blanket implementation checks the number of indices.
-pub trait ElemGetMut: ElemGetMutImpl {
+pub trait ElemGetMutRepr: ElemGetMutReprImpl {
     fn get_mut(&mut self, indices: Vec<Self::Index>) -> Result<&mut Self::E, Self::Err>;
 }
-impl<T: ElemGetMutImpl> ElemGetMut for T {
+impl<T: ElemGetMutReprImpl> ElemGetMutRepr for T {
     fn get_mut(&mut self, indices: Vec<Self::Index>) -> Result<&mut Self::E, Self::Err> {
         // TODO: check number of indices
         // if number of indices invalid {
@@ -70,44 +70,82 @@ impl<T: ElemGetMutImpl> ElemGetMut for T {
 //     }
 // }
 
-impl<M: TensorBroker, T: ElemGet> Tensor<M, T> {
-    pub fn get<Map>(&self, indices: Map) -> Result<Result<&T::E, T::Err>, M::Err>
+impl<A: ElemGetRepr, B: TensorBroker> Tensor<A, B> {
+    pub fn get<
+        'a,
+        K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
+        V: ExactSizeIterator + Iterator<Item = A::Index>,
+    >(
+        &self,
+        map: LegMapArg<K, V>,
+    ) -> Result<Result<&A::E, A::Err>, B::Err>
     where
-        M: TranslateMgr<Map, Content = T::Index>,
+        B: TranslateBroker<A::Index>,
+        B::Id: 'a,
     {
-        let v = self.broker().translate(indices)?;
+        let v = self.broker().translate(map)?;
         Ok(unsafe { self.repr().get_unchecked(v) })
     }
 }
-impl<M: TensorBroker, T: ElemGetMut> Tensor<M, T> {
-    pub fn get_mut<Map>(&mut self, indices: Map) -> Result<Result<&mut T::E, T::Err>, M::Err>
+impl<A: ElemGetMutRepr, B: TensorBroker> Tensor<A, B> {
+    pub fn get_mut<
+        'a,
+        K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
+        V: ExactSizeIterator + Iterator<Item = A::Index>,
+    >(
+        &mut self,
+        map: LegMapArg<K, V>,
+    ) -> Result<Result<&mut A::E, A::Err>, B::Err>
     where
-        M: TranslateMgr<Map, Content = T::Index>,
+        B: TranslateBroker<A::Index>,
+        B::Id: 'a,
     {
-        let v = self.broker().translate(indices)?;
+        let v = { self.broker().translate(map)? };
         Ok(unsafe { self.repr_mut().get_mut_unchecked(v) })
     }
 }
 
-impl<Map, M: TranslateMgr<Map, Content = T::Index>, T: ElemGet> core::ops::Index<Map>
-    for Tensor<M, T>
-where
-    T::Err: core::fmt::Debug,
-    M::Err: core::fmt::Debug,
-{
-    type Output = T::E;
+// impl<M: TensorBroker, T: ElemGetMut> Tensor<M, T> {
+//     pub fn get_mut<Map>(&mut self, indices: Map) -> Result<Result<&mut T::E, T::Err>, M::Err>
+//     where
+//         M: TranslateBroker<Map, Content = T::Index>,
+//     {
+//         let v = self.broker().translate(indices)?;
+//         Ok(unsafe { self.repr_mut().get_mut_unchecked(v) })
+//     }
+// }
 
-    fn index(&self, indices: Map) -> &Self::Output {
+impl<
+    'a,
+    A: ElemGetRepr,
+    B: TranslateBroker<A::Index>,
+    K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
+    V: ExactSizeIterator + Iterator<Item = A::Index>,
+> core::ops::Index<LegMapArg<K, V>> for Tensor<A, B>
+where
+    A::Err: core::fmt::Debug,
+    B::Err: core::fmt::Debug,
+    B::Id: 'a,
+{
+    type Output = A::E;
+
+    fn index(&self, indices: LegMapArg<K, V>) -> &Self::Output {
         self.get(indices).unwrap().unwrap()
     }
 }
-impl<Map, M: TranslateMgr<Map, Content = T::Index>, T: ElemGetMut> core::ops::IndexMut<Map>
-    for Tensor<M, T>
+impl<
+    'a,
+    T: ElemGetMutRepr,
+    B: TranslateBroker<T::Index>,
+    K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
+    V: ExactSizeIterator + Iterator<Item = T::Index>,
+> core::ops::IndexMut<LegMapArg<K, V>> for Tensor<T, B>
 where
     T::Err: core::fmt::Debug,
-    M::Err: core::fmt::Debug,
+    B::Err: core::fmt::Debug,
+    B::Id: 'a,
 {
-    fn index_mut(&mut self, indices: Map) -> &mut Self::Output {
+    fn index_mut(&mut self, indices: LegMapArg<K, V>) -> &mut Self::Output {
         self.get_mut(indices).unwrap().unwrap()
     }
 }

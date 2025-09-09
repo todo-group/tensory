@@ -19,7 +19,10 @@ Add Tensory to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-tensory = "0.1"
+tensory-core = "0.1.0"
+tensory-basic = "0.1.0"
+tensory-linalg = "0.1.0"
+tensory-ndarray = "0.1.0"
 ```
 
 Then, use it in your code:
@@ -37,6 +40,7 @@ Read [Examples](https://github.com/todo-group/tensory/example) for sample codes,
 ## Roadmap
 
 - High-Dimentional-Diagonal Tensor
+- Normalized tensor (for TRG)
 - Sparse Tensor
 - Lazy Contraction Tensor
 - Allocation-aware interface
@@ -54,3 +58,4 @@ Inspired by:
 
 - ITensor (C++)
 - ndarray (Rust)
+- grassmanntn (python)

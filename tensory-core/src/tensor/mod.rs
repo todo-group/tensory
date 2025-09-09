@@ -13,4 +13,8 @@ mod tensor;
 pub use tensor::*;
 
 /// layer 3 tensor concept: layer 2 tensor with runtime
-pub mod tensor_with_runtime;
+mod tensor_with_runtime;
+pub use tensor_with_runtime::*;
+
+mod leg;
+pub use leg::*;

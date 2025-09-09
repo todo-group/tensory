@@ -2,6 +2,10 @@
 mod add;
 pub use add::*;
 
+/// provide interface for tensor-tensor subtraction
+mod sub;
+pub use sub::*;
+
 /// provide interface for tensor additive inverse, and the induced subtractions
 mod neg;
 pub use neg::*;
