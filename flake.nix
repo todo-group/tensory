@@ -22,6 +22,8 @@
           })
           pkgs.openblas
           pkgs.pkg-config
+          pkgs.uv
+          pkgs.python313
         ];
         zshCompEnv = pkgs.buildEnv {
           name = "zsh-comp";
