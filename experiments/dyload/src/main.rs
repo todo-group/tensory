@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use std::ffi::{CStr, c_char, c_double, c_int};
 
 // from openblas-sys
@@ -53,11 +54,28 @@ fn main() -> anyhow::Result<()> {
         c
     };
 
+    #[cfg(target_os = "linux")]
+    const LIB_FILE_NAME: &str = "libopenblas.so";
+    #[cfg(target_os = "macos")]
+    const LIB_FILE_NAME: &str = "libopenblas.dylib";
+    #[cfg(target_os = "windows")]
+    const LIB_FILE_NAME: &str = "openblas.dll";
+
     let c_blas = unsafe {
         let mut c = vec![0.0; m * n];
-        let lib = libloading::Library::new(
-            "/nix/store/90rwbyaza1bwl1q1w8q90sz1riyy3y58-openblas-0.3.30/lib/libblas.dylib",
-        )?;
+
+        let lib_info = pkg_config::Config::new()
+            .cargo_metadata(false)
+            .env_metadata(false)
+            .probe("openblas")?;
+        let lib_path = lib_info
+            .link_paths
+            .into_iter()
+            .map(|p| p.join(LIB_FILE_NAME))
+            .find(|p| p.exists())
+            .ok_or(anyhow!("no lib file detected"))?;
+
+        let lib = libloading::Library::new(lib_path)?;
         let dgemm: libloading::Symbol<DgemmFn> = lib.get(b"dgemm_")?;
 
         let get_config: libloading::Symbol<GetConfigFn> = lib.get(b"openblas_get_config")?;

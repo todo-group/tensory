@@ -1,0 +1,15 @@
+[package]
+name = "ndarray-performance-test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+num-complex = { workspace = true }
+ndarray = { workspace = true }
+ndarray-linalg = { workspace = true }
+num-traits = { workspace = true }
+blas-src = { workspace = true, features = ["accelerate"] }
+openblas-src = { workspace = true, features = ["cblas"] }
+

@@ -1,0 +1,8 @@
+[project]
+name = "numpy-performance-test"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.3.3",
+    "scipy>=1.16.2",
+]
