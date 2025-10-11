@@ -1,10 +1,13 @@
 [package]
 name = "tensory-basic"
-version = "0.1.0"
-edition = "2024"
+edition = { workspace=true }
+version = { workspace=true }
+repository = { workspace=true }
+authors = { workspace=true }
+license = { workspace=true }
 
 [dependencies]
-tensory-core = { path = "../tensory-core" }
-uuid = { version = "1.10.0", features = ["v4"] }
-bimap = "0.6.3"
-thiserror = "2.0.16"
+tensory-core = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+bimap = { workspace = true }
+thiserror = { workspace = true }

@@ -1,7 +1,10 @@
 [package]
 name = "tensory-linalg"
-version = "0.1.0"
-edition = "2024"
+edition = { workspace=true }
+version = { workspace=true }
+repository = { workspace=true }
+authors = { workspace=true }
+license = { workspace=true }
 
 [dependencies]
-tensory-core = { path = "../tensory-core" }
+tensory-core = { workspace = true }

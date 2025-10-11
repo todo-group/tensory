@@ -3,10 +3,29 @@
 version = 4
 
 [[package]]
+name = "accelerate-src"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "415ed64958754dbe991900f3940677e6a7eefb4d7367afd70d642677b0c7d19d"
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+
+[[package]]
+name = "algorithms"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "num-complex",
+ "tensory-basic",
+ "tensory-core",
+ "tensory-linalg",
+ "tensory-ndarray",
+]
 
 [[package]]
 name = "android_system_properties"
@@ -68,7 +87,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b95e83dc868db96e69795c0213143095f03de9dd3252f205d4ac716e4076a7e0"
 dependencies = [
- "openblas-src",
+ "accelerate-src",
 ]
 
 [[package]]
@@ -194,6 +213,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "libloading",
+ "pkg-config",
 ]
 
 [[package]]
@@ -204,19 +224,6 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.0",
-]
-
-[[package]]
-name = "examples"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "num-complex",
- "tensory-basic",
- "tensory-core",
- "tensory-linalg",
- "tensory-ndarray",
 ]
 
 [[package]]
@@ -333,6 +340,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ideal"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "num-complex",
+ "tensory-basic",
+ "tensory-core",
+ "tensory-linalg",
+ "tensory-ndarray",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -378,7 +398,6 @@ dependencies = [
  "katexit",
  "lapack-sys",
  "num-traits",
- "openblas-src",
  "thiserror",
 ]
 
@@ -489,6 +508,20 @@ dependencies = [
  "num-traits",
  "rand",
  "thiserror",
+]
+
+[[package]]
+name = "ndarray-performance-test"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blas-src",
+ "chrono",
+ "ndarray",
+ "ndarray-linalg",
+ "num-complex",
+ "num-traits",
+ "openblas-src",
 ]
 
 [[package]]
@@ -859,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "tensory-basic"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bimap",
  "tensory-core",
@@ -869,7 +902,7 @@ dependencies = [
 
 [[package]]
 name = "tensory-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tensory-basic",
  "thiserror",
@@ -877,14 +910,14 @@ dependencies = [
 
 [[package]]
 name = "tensory-linalg"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tensory-core",
 ]
 
 [[package]]
 name = "tensory-ndarray"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "blas-src",
@@ -953,6 +986,18 @@ dependencies = [
  "http",
  "httparse",
  "log",
+]
+
+[[package]]
+name = "usage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "num-complex",
+ "tensory-basic",
+ "tensory-core",
+ "tensory-linalg",
+ "tensory-ndarray",
 ]
 
 [[package]]

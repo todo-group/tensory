@@ -1,20 +1,23 @@
 [package]
 name = "tensory-ndarray"
-version = "0.1.0"
-edition = "2024"
+edition = { workspace=true }
+version = { workspace=true }
+repository = { workspace=true }
+authors = { workspace=true }
+license = { workspace=true }
 
 [dependencies]
-ndarray = "0.16.1"
-ndarray-linalg = { version = "0.17.0", features = ["openblas-system"] }
-blas-src = { version = "0.10", features = ["openblas"] }
-openblas-src = { version = "0.10", features = ["cblas", "system"] }
-num-traits = "0.2.19"
-tensory-core = { path = "../tensory-core" }
-tensory-linalg = { path = "../tensory-linalg" }
+ndarray = { workspace = true }
+ndarray-linalg = { workspace = true }
+blas-src = { workspace = true, features = ["accelerate"] }
+openblas-src = { workspace = true, features = ["cblas"] }
+num-traits = { workspace = true }
+tensory-core = { workspace = true }
+tensory-linalg = { workspace = true }
 
 
 [dev-dependencies]
-tensory-basic = { path = "../tensory-basic" }
-num-complex = "0.4.6"
-anyhow = "1.0.98"
-chrono = "0.4.42"
+tensory-basic = { workspace = true }
+num-complex = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }

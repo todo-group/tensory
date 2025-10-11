@@ -7,7 +7,44 @@ members = [
     "tensory-basic",
 
     # internal
-
-    "examples", "dyload-test",
+    "examples/*",
     # "benches"
+
+    "experiments/*"
 ]
+exclude= [
+    "experiments/numpy"
+]
+
+
+[workspace.package]
+edition = "2024"
+version = "0.2.0"
+repository = "https://github.com/todo-group/tensory"
+authors = ["JyJyJcr <82190170+JyJyJcr@users.noreply.github.com>"]
+license = "MIT"
+
+[workspace.dependencies]
+tensory-core = { path = "tensory-core" }
+tensory-basic = { path = "tensory-basic" }
+tensory-linalg = { path = "tensory-linalg" }
+tensory-ndarray = { path = "tensory-ndarray" }
+
+thiserror = "2.0.16"
+anyhow = "1.0.99"
+
+chrono = "0.4.42"
+
+num-complex = "0.4.6"
+num-traits = "0.2.19"
+
+ndarray = "0.16.1"
+ndarray-linalg = { version = "0.17.0" }
+blas-src = { version = "0.10" }
+openblas-src = { version = "0.10", features = [ "system"] }
+
+libloading = "0.8.8"
+pkg-config = "0.3.32"
+
+uuid = { version = "1.10.0" }
+bimap = "0.6.3"
