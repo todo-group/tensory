@@ -41,6 +41,10 @@ axis(足)に対して、ローカルな`usize`で識別する。すなわち、$
 
 `Tensor`にさらに演算に応じてXxxCtxを供給する`CtxProvider`への不変参照を張っている(可変性は内部可変を用いること)。
 
+### ndarray
+
+NDarrayのsvdはU,Vを正方形で出すのでAが長方形の時に遅くなる 要replace ... 暫時gesddを使う(numpyも同様)
+
 ## rust
 
 ### unchecked(unsafe)に関する捉え方
