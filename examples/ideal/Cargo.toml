@@ -1,0 +1,13 @@
+[package]
+name = "ideal"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tensory-core = { workspace = true }
+tensory-basic = { workspace = true }
+tensory-linalg = { workspace = true }
+tensory-ndarray = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+num-complex = { workspace = true }

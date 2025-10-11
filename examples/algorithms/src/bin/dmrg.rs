@@ -3,8 +3,8 @@ use tensory_basic::{
     broker::VecBroker,
     id::{Id128, Prime},
 };
-use tensory_core::tensor::TensorRepr;
-use tensory_core::{arith::Conj, leg, tensor::LegMapArg};
+//use tensory_core::tensor::TensorRepr;
+use tensory_core::{args::LegMapArg, arith::Conj, leg};
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 type Leg = Prime<Id128>;

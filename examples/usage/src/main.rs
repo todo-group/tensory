@@ -4,12 +4,17 @@
 //     nd_dense::NdDenseTensor,
 // };
 
+use std::{
+    hint::black_box,
+    time::{Duration, Instant},
+};
+
 use tensory_basic::{
     broker::VecBroker,
     id::{Id128, Prime},
 };
 use tensory_linalg::svd::TensorSvdExt;
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt};
+use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
 
 use tensory_core::leg;
 
@@ -36,27 +41,41 @@ fn main() -> anyhow::Result<()> {
     let e_n = 50;
     let f_n = 60;
 
-    // allocation aware syntax
-    let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n]).unwrap();
-    let tb = Tensor::random(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n]).unwrap();
-    //let tc = Tensor::zero(v![a=>1, b=>2, e=>5, f=>6]);
+    // // allocation aware syntax
+    // let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n]).unwrap();
+    // let tb = Tensor::random(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n]).unwrap();
+    // //let tc = Tensor::zero(v![a=>1, b=>2, e=>5, f=>6]);
 
-    let tx = (&ta * &tb)?.with(())?;
+    // let nd = NdRuntime;
+
+    // let ta = ta.bind(&nd);
+    // let tb = tb.bind(&nd);
+
+    // let tx = (&ta * &tb)?;
 
     let us_leg = Leg::new();
     let vs_leg = Leg::new();
 
-    let tx = Tensor::<f64>::random(leg![a=>30, b=>30, e=>30, f=>30]).unwrap();
+    let mut x = Duration::ZERO;
 
-    let svd = tx.view().svd(leg![&a, &b], us_leg, vs_leg)?;
+    let d = 20;
+    for t in 0..100 {
+        println!("t = {}", t);
 
-    let pre = chrono::Local::now();
+        let tx = Tensor::<f64>::random(leg![ b=>b_n, e=>e_n,a=>a_n, f=>f_n]).unwrap();
 
-    let (_u, _s, _v) = svd.with(((),))?;
+        let svd = (&tx).svd(leg![&a, &b], us_leg, vs_leg)?;
 
-    let post = chrono::Local::now();
+        let pre = Instant::now();
 
-    println!("{}", post - pre);
+        black_box(svd.with(((),)))?;
+
+        let post = Instant::now();
+
+        x += post.duration_since(pre);
+    }
+
+    println!("{}", x.as_secs_f64() / 100.0);
 
     //svd(A, [a, b, c], us, sv);
 
