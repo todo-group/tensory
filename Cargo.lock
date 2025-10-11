@@ -16,7 +16,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "algorithms"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -209,7 +209,7 @@ dependencies = [
 
 [[package]]
 name = "dyload-test"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "libloading",
@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "ideal"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -512,7 +512,7 @@ dependencies = [
 
 [[package]]
 name = "ndarray-performance-test"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "blas-src",
@@ -990,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "usage"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "num-complex",
