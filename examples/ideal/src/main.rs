@@ -1,4 +1,4 @@
-use tensory::{
+use tensory_core::{
     basic::leg::{Id128, Prime, Tag},
     dense::DenseTensor,
     v,

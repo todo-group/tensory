@@ -1,5 +1,8 @@
-use crate::tensor::{
-    AsViewMutRepr, AsViewRepr, Tensor, TensorBroker, TensorRepr, TensorWithRuntime,
+use crate::{
+    mapper::AxisMapper,
+    repr::{AsViewMutRepr, AsViewRepr, TensorRepr},
+    tensor::Tensor,
+    tensor_with_runtime::TensorWithRuntime,
 };
 
 /// Raw context of conjugation operation.
@@ -19,12 +22,12 @@ pub unsafe trait ConjugationContext<A: TensorRepr> {
     fn conjugate(self, a: A) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorConj<A: TensorRepr, B: TensorBroker> {
+pub struct TensorConj<A: TensorRepr, B: AxisMapper> {
     a: A,
     res_mgr: B,
 }
 
-impl<A: TensorRepr, B: TensorBroker> TensorConj<A, B> {
+impl<A: TensorRepr, B: AxisMapper> TensorConj<A, B> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -43,21 +46,21 @@ pub trait Conj {
     fn conj(self) -> Self::Output;
 }
 
-impl<A: TensorRepr, B: TensorBroker> Conj for Tensor<A, B> {
+impl<A: TensorRepr, B: AxisMapper> Conj for Tensor<A, B> {
     type Output = TensorConj<A, B>;
     fn conj(self) -> Self::Output {
         let (a, mgr) = self.into_raw();
         TensorConj { a, res_mgr: mgr }
     }
 }
-impl<'a, A: TensorRepr + AsViewRepr<'a>, B: TensorBroker + Clone> Conj for &'a Tensor<A, B> {
+impl<'a, A: TensorRepr + AsViewRepr<'a>, B: AxisMapper + Clone> Conj for &'a Tensor<A, B> {
     type Output = TensorConj<A::View, B>;
     fn conj(self) -> TensorConj<A::View, B> {
         let (a, mgr) = self.view().into_raw();
         TensorConj { a, res_mgr: mgr }
     }
 }
-impl<'a, A: TensorRepr + AsViewMutRepr<'a>, B: TensorBroker + Clone> Conj for &'a mut Tensor<A, B> {
+impl<'a, A: TensorRepr + AsViewMutRepr<'a>, B: AxisMapper + Clone> Conj for &'a mut Tensor<A, B> {
     type Output = TensorConj<A::ViewMut, B>;
     fn conj(self) -> TensorConj<A::ViewMut, B> {
         let (a, mgr) = self.view_mut().into_raw();
@@ -65,20 +68,20 @@ impl<'a, A: TensorRepr + AsViewMutRepr<'a>, B: TensorBroker + Clone> Conj for &'
     }
 }
 
-impl<'rt, A: TensorRepr, B: TensorBroker, RT> TensorWithRuntime<'rt, A, B, RT>
-where
-    &'rt RT: ConjugationContext<A>,
-{
-    pub fn conj(
-        self,
-    ) -> Result<
-        TensorWithRuntime<'rt, <&'rt RT as ConjugationContext<A>>::Res, B, RT>,
-        <&'rt RT as ConjugationContext<A>>::Err,
-    > {
-        let (t, rt) = self.into_raw();
+// impl<'rt, A: TensorRepr, B: AxisMapper, RT> TensorWithRuntime<A, B, RT>
+// where
+//     &'rt RT: ConjugationContext<A>,
+// {
+//     pub fn conj(
+//         self,
+//     ) -> Result<
+//         TensorWithRuntime<'rt, <&'rt RT as ConjugationContext<A>>::Res, B, RT>,
+//         <&'rt RT as ConjugationContext<A>>::Err,
+//     > {
+//         let (t, rt) = self.into_raw();
 
-        let t = t.conj().with(rt)?;
+//         let t = t.conj().with(rt)?;
 
-        Ok(TensorWithRuntime::from_raw(t, rt))
-    }
-}
+//         Ok(TensorWithRuntime::from_raw(t, rt))
+//     }
+// }

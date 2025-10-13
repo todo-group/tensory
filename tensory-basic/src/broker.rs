@@ -13,10 +13,14 @@ use thiserror::Error;
 
 use alloc::vec::Vec;
 
-use tensory_core::tensor::{
-    BuildableBroker, ConnectAxisOrigin, ConnectBroker, DecompConf, DecompGroupedBroker,
-    GroupBroker, GroupedAxes, GroupedBroker, LegMapArg, LegSetArg, ReplaceBroker, TensorBroker,
-    TranslateBroker,
+use tensory_core::{
+    args::{LegMapArg, LegSetArg},
+    mapper::{
+        AxisMapper, BuildableMapper, ConnectAxisOrigin, ConnectMapper, DecompConf,
+        DecompGroupedMapper, GroupMapper, GroupedAxes, GroupedMapper, OverlayAxisMapping,
+        OverlayMapper, ReplaceMapper, TranslateMapper,
+    },
+    tensor_with_runtime::{RuntimeError, TensorWithRuntime},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,10 +40,10 @@ impl<T> VecBroker<T> {
     }
 }
 
-impl<T: Eq + Clone> TensorBroker for VecBroker<T> {
+unsafe impl<T: Eq + Clone> AxisMapper for VecBroker<T> {
     type Id = T;
 
-    fn len(&self) -> usize {
+    fn dim(&self) -> usize {
         self.0.len()
     }
 }
@@ -58,7 +62,7 @@ fn check_unique<Id: Eq>(legs: &[Id]) -> bool {
 #[derive(Debug)]
 pub struct BuildErr;
 
-impl<T: Eq + Clone, I: Iterator<Item = Self::Id>> BuildableBroker<I> for VecBroker<T> {
+impl<T: Eq + Clone, I: Iterator<Item = Self::Id>> BuildableMapper<I> for VecBroker<T> {
     type Err = BuildErr;
     fn build(iter: I) -> Result<Self, Self::Err> {
         let v = iter.collect();
@@ -74,11 +78,11 @@ impl<T: Eq + Clone, I: Iterator<Item = Self::Id>> BuildableBroker<I> for VecBrok
 //     }
 // }
 
-unsafe impl<T: Eq + Clone> ConnectBroker<2> for VecBroker<T> {
+unsafe impl<T: Eq + Clone> ConnectMapper<2> for VecBroker<T> {
     type Err = Infallible;
     fn connect([lhs, rhs]: [Self; 2]) -> Result<(Self, ConnectAxisOrigin<2>), Self::Err> {
-        let lhs_len = lhs.len();
-        let rhs_len = rhs.len();
+        let lhs_len = lhs.dim();
+        let rhs_len = rhs.dim();
 
         let pairs: Vec<_> = lhs
             .0
@@ -133,18 +137,15 @@ unsafe impl<T: Eq + Clone> ConnectBroker<2> for VecBroker<T> {
 }
 
 unsafe impl<'a, Id: Eq + Clone, K: Iterator<Item = &'a Id> + ExactSizeIterator>
-    GroupBroker<2, LegSetArg<K>> for VecBroker<Id>
+    GroupMapper<2, LegSetArg<K>> for VecBroker<Id>
 where
     Id: 'a,
 {
     type Grouped = SplitBroker<Id>;
     type Err = Infallible;
 
-    fn split(
-        self,
-        queue: LegSetArg<K>,
-    ) -> Result<(Self::Grouped, tensory_core::tensor::GroupedAxes<2>), Self::Err> {
-        let len = self.len();
+    fn split(self, queue: LegSetArg<K>) -> Result<(Self::Grouped, GroupedAxes<2>), Self::Err> {
+        let len = self.dim();
 
         let legs = queue.into_raw();
 
@@ -186,16 +187,16 @@ pub struct SplitBroker<Id> {
     second: Vec<Id>,
 }
 
-unsafe impl<Id: Eq + Clone> GroupedBroker<2> for SplitBroker<Id> {
-    type Broker = VecBroker<Id>;
+unsafe impl<Id: Eq + Clone> GroupedMapper<2> for SplitBroker<Id> {
+    type Mapper = VecBroker<Id>;
 }
 
-unsafe impl<const M: usize, Id: Eq + Clone> DecompGroupedBroker<2, M> for SplitBroker<Id> {
+unsafe impl<const M: usize, Id: Eq + Clone> DecompGroupedMapper<2, M> for SplitBroker<Id> {
     type Err = Infallible;
     fn decomp(
         self,
-        conf: DecompConf<2, M, <Self::Broker as TensorBroker>::Id>,
-    ) -> Result<[Self::Broker; M], Self::Err> {
+        conf: DecompConf<2, M, <Self::Mapper as AxisMapper>::Id>,
+    ) -> Result<[Self::Mapper; M], Self::Err> {
         let (group_belongs, new_bonds) = conf.into_raw();
 
         let mut x: [Vec<Id>; M] = core::array::from_fn(|_| Vec::new());
@@ -211,7 +212,7 @@ unsafe impl<const M: usize, Id: Eq + Clone> DecompGroupedBroker<2, M> for SplitB
     }
 }
 
-impl<Id: Eq + Clone> ReplaceBroker for VecBroker<Id> {
+impl<Id: Eq + Clone> ReplaceMapper for VecBroker<Id> {
     type Err = Id;
     fn replace(self, old_leg: &Self::Id, new_leg: Self::Id) -> Result<Self, Self::Err> {
         let mut v = self.0;
@@ -308,7 +309,7 @@ impl<Id: Eq + Clone> ReplaceBroker for VecBroker<Id> {
 #[error("translation error")]
 pub struct TranslateErr;
 
-impl<Id: Eq + Clone, C> TranslateBroker<C> for VecBroker<Id> {
+impl<Id: Eq + Clone, C> TranslateMapper<C> for VecBroker<Id> {
     type Err = TranslateErr;
     fn translate<
         'a,

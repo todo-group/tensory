@@ -3,6 +3,8 @@ extern crate alloc;
 #[cfg(test)]
 extern crate std;
 
+extern crate blas_src;
+
 mod tenalg;
 
 pub mod cut_filter {
@@ -16,22 +18,24 @@ use core::{
 };
 
 use tensory_core::{
-    arith::{CommutativeScalarDivContext, CommutativeScalarMulContext, ConjugationContext},
-    ops::elem_get::{ElemGetMutReprImpl, ElemGetReprImpl},
-    tensor::{
-        AsViewMutRepr, AsViewRepr, BuildableBroker, ConnectAxisOrigin, GroupedAxes, LegMapArg,
-        Tensor, TensorBroker,
+    args::LegMapArg,
+    arith::{
+        CommutativeScalarDivContext, CommutativeScalarMulContext, ConjugationContext, MulRuntime,
     },
+    mapper::{AxisMapper, BuildableMapper, ConnectAxisOrigin, GroupedAxes},
+    repr::{AsViewMutRepr, AsViewRepr},
+    tensor::Tensor,
+    utils::elem_get::{ElemGetMutReprImpl, ElemGetReprImpl},
 };
 
 use alloc::vec::Vec;
 use ndarray::{ArrayBase, ArrayD, ArrayViewD, ArrayViewMutD, IxDyn, OwnedRepr, ScalarOperand};
 use ndarray_linalg::{Lapack, Scalar, from_diag, random};
 use num_traits::{ConstZero, Zero};
-use tensory_core::{ops::contr::MulCtxImpl, tensor::TensorRepr};
+use tensory_core::{arith::MulCtxImpl, repr::TensorRepr};
 use tensory_linalg::svd::SvdContextImpl;
 
-use crate::tenalg::{conj, cut_filter::CutFilter, error::TenalgError, into_svd, mul};
+use crate::tenalg::{conj, cut_filter::CutFilter, error::TenalgError, into_svd, into_svddc, mul};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NdDenseRepr<E> {
@@ -73,7 +77,7 @@ impl<E> NdDenseRepr<E> {
     }
 }
 
-impl<'a, E: 'a> AsViewRepr<'a> for NdDenseRepr<E> {
+unsafe impl<'a, E: 'a> AsViewRepr<'a> for NdDenseRepr<E> {
     type View = NdDenseViewRepr<'a, E>;
     fn view(&'a self) -> Self::View {
         NdDenseViewRepr {
@@ -81,7 +85,7 @@ impl<'a, E: 'a> AsViewRepr<'a> for NdDenseRepr<E> {
         }
     }
 }
-impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseRepr<E> {
+unsafe impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseRepr<E> {
     type ViewMut = NdDenseViewMutRepr<'a, E>;
     fn view_mut(&'a mut self) -> Self::ViewMut {
         NdDenseViewMutRepr {
@@ -158,16 +162,16 @@ unsafe impl<E: ScalarOperand + Div<Output = E> + Clone>
 
 //struct NdDenseContext;
 
-unsafe impl<'a, E: Lapack + Scalar + ConstZero>
-    MulCtxImpl<NdDenseViewRepr<'a, E>, NdDenseViewRepr<'a, E>> for ()
+unsafe impl<'l, 'r, E: Lapack + Scalar + ConstZero>
+    MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
 {
     type Res = NdDenseRepr<E>;
     type Err = TenalgError;
 
     unsafe fn mul_unchecked(
         self,
-        lhs: NdDenseViewRepr<'a, E>,
-        rhs: NdDenseViewRepr<'a, E>,
+        lhs: NdDenseViewRepr<'l, E>,
+        rhs: NdDenseViewRepr<'r, E>,
         axis_origin: ConnectAxisOrigin<2>,
     ) -> Result<Self::Res, Self::Err> {
         let lhs_raw = lhs.data;
@@ -275,7 +279,7 @@ where
 
         let a_rot = a_raw.permuted_axes(a_idxv_ordered);
 
-        let (u, s, v) = into_svd(a_rot, u_set_len, self.0)?;
+        let (u, s, v) = into_svddc(a_rot, u_set_len, self.0)?;
 
         let u = u.permuted_axes(
             core::iter::once(u_set_len)
@@ -349,39 +353,39 @@ unsafe impl<'a, E: Scalar> ConjugationContext<NdDenseViewRepr<'a, E>> for () {
 
 pub type NdDenseTensor<E, B> = Tensor<NdDenseRepr<E>, B>;
 
-pub trait NdDenseTensorExt<E, B: TensorBroker>: Sized {
+pub trait NdDenseTensorExt<E, B: AxisMapper>: Sized {
     fn zero<
         K: ExactSizeIterator + Iterator<Item = B::Id>,
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableBroker<K>>::Err>
+    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
     where
         E: Clone + Zero,
-        B: BuildableBroker<K>;
+        B: BuildableMapper<K>;
     fn random<
         K: ExactSizeIterator + Iterator<Item = B::Id>,
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableBroker<K>>::Err>
+    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
     where
         E: Scalar,
-        B: BuildableBroker<K>;
+        B: BuildableMapper<K>;
     fn map<E2, F: FnMut(&E) -> E2>(&self, f: F) -> Tensor<NdDenseRepr<E2>, B>
     where
         B: Clone;
 }
-impl<E, B: TensorBroker> NdDenseTensorExt<E, B> for NdDenseTensor<E, B> {
+impl<E, B: AxisMapper> NdDenseTensorExt<E, B> for NdDenseTensor<E, B> {
     fn zero<
         K: ExactSizeIterator + Iterator<Item = B::Id>,
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableBroker<K>>::Err>
+    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
     where
         E: Clone + Zero,
-        B: BuildableBroker<K>,
+        B: BuildableMapper<K>,
     {
         let (k, v) = map.into_raw();
 
@@ -394,10 +398,10 @@ impl<E, B: TensorBroker> NdDenseTensorExt<E, B> for NdDenseTensor<E, B> {
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableBroker<K>>::Err>
+    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
     where
         E: Scalar,
-        B: BuildableBroker<K>,
+        B: BuildableMapper<K>,
     {
         let (k, v) = map.into_raw();
         let broker = B::build(k)?;
@@ -407,26 +411,17 @@ impl<E, B: TensorBroker> NdDenseTensorExt<E, B> for NdDenseTensor<E, B> {
     where
         B: Clone,
     {
-        unsafe { Tensor::from_raw_unchecked(self.repr().map(&mut f), self.broker().clone()) }
+        unsafe { Tensor::from_raw_unchecked(self.repr().map(&mut f), self.mapper().clone()) }
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-struct Nd;
-unsafe impl<'a, E: Lapack + Scalar + ConstZero>
-    MulCtxImpl<NdDenseViewRepr<'a, E>, NdDenseViewRepr<'a, E>> for &Nd
+pub struct NdRuntime;
+impl<'l, 'r, E: Scalar + Lapack + ConstZero>
+    MulRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for &NdRuntime
 {
-    type Res = NdDenseRepr<E>;
-    type Err = TenalgError;
-
-    unsafe fn mul_unchecked(
-        self,
-        lhs: NdDenseViewRepr<'a, E>,
-        rhs: NdDenseViewRepr<'a, E>,
-        axis_origin: ConnectAxisOrigin<2>,
-    ) -> Result<Self::Res, Self::Err> {
-        unsafe { ().mul_unchecked(lhs, rhs, axis_origin) }
-    }
+    type Ctx = ();
+    fn mul_ctx(self) -> Self::Ctx {}
 }
 
 #[cfg(test)]
@@ -469,10 +464,10 @@ mod tests {
         let ta = Tensor::random(leg![a => a_n, i => i_n, b => b_n, j => j_n]).unwrap();
         let tb = Tensor::random(leg![j => j_n, c => c_n, d => d_n, i => i_n]).unwrap();
 
-        let nd = Nd;
+        let nd = NdRuntime;
 
-        let alv = ta.broker();
-        let blv = tb.broker();
+        let alv = ta.mapper();
+        let blv = tb.mapper();
         println!("{:?}", alv);
         println!("{:?}", blv);
 
@@ -492,7 +487,7 @@ mod tests {
 
         let tc = (tc / (10.0,)).with(())?;
 
-        let clv = tc.broker();
+        let clv = tc.mapper();
         println!("{:?}", clv);
 
         // let (ta, _) = ta.into_raw();
@@ -542,16 +537,13 @@ mod tests {
         let us = Leg::new();
         let vs = Leg::new();
 
-        let (u, s, v) = t
-            .view()
-            .svd_with_more_ids(leg![&a, &b], us, us, vs, vs)?
-            .with(((),))?;
+        let (u, s, v) = t.view().svd(leg![&a, &b], us, vs)?.with(((),))?;
 
         //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 
         println!("{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n", a, b, c, d, us, vs);
 
-        println!("{:?}\n{:?}\n{:?}\n", u.broker(), s.broker(), v.broker());
+        println!("{:?}\n{:?}\n{:?}\n", u.mapper(), s.mapper(), v.mapper());
 
         println!(
             "{:?} {:?} {:?}",
@@ -562,7 +554,7 @@ mod tests {
 
         let us_tmp = (&u * &s)?.with(())?;
 
-        println!("{:?} {:?}", us_tmp.broker(), u.repr().data.shape());
+        println!("{:?} {:?}", us_tmp.mapper(), u.repr().data.shape());
 
         let usv = (us_tmp.view() * v.view())?.with(())?;
 
@@ -587,13 +579,13 @@ mod tests {
         let ap = a.prime();
         let bp = b.prime();
 
-        println!("{:?} {:?} {:?}:  {:?}", a, b, us, ut.broker());
+        println!("{:?} {:?} {:?}:  {:?}", a, b, us, ut.mapper());
 
         let ut = ut.replace_leg(&a, a.prime()).unwrap();
         let ut = ut.replace_leg(&b, b.prime()).unwrap();
-        println!("{:?}", ut.broker());
+        println!("{:?}", ut.mapper());
         let uut = (&u * ut)?.with(())?;
-        println!("{:?}", uut.broker());
+        println!("{:?}", uut.mapper());
         for ai in 0..a_n {
             for bi in 0..b_n {
                 for api in 0..a_n {

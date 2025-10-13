@@ -1,6 +1,11 @@
 use alloc::vec::Vec;
 
-use crate::tensor::{LegMapArg, Tensor, TensorBroker, TensorRepr, TranslateBroker};
+use crate::{
+    args::LegMapArg,
+    mapper::{AxisMapper, TranslateMapper},
+    repr::TensorRepr,
+    tensor::Tensor,
+};
 
 /// Tensor representation providing immutable element access, WITHOUT checking the number of indices.
 pub trait ElemGetReprImpl: TensorRepr {
@@ -70,7 +75,7 @@ impl<T: ElemGetMutReprImpl> ElemGetMutRepr for T {
 //     }
 // }
 
-impl<A: ElemGetRepr, B: TensorBroker> Tensor<A, B> {
+impl<A: ElemGetRepr, B: AxisMapper> Tensor<A, B> {
     pub fn get<
         'a,
         K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
@@ -80,14 +85,14 @@ impl<A: ElemGetRepr, B: TensorBroker> Tensor<A, B> {
         map: LegMapArg<K, V>,
     ) -> Result<Result<&A::E, A::Err>, B::Err>
     where
-        B: TranslateBroker<A::Index>,
+        B: TranslateMapper<A::Index>,
         B::Id: 'a,
     {
-        let v = self.broker().translate(map)?;
+        let v = self.mapper().translate(map)?;
         Ok(unsafe { self.repr().get_unchecked(v) })
     }
 }
-impl<A: ElemGetMutRepr, B: TensorBroker> Tensor<A, B> {
+impl<A: ElemGetMutRepr, B: AxisMapper> Tensor<A, B> {
     pub fn get_mut<
         'a,
         K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
@@ -97,10 +102,10 @@ impl<A: ElemGetMutRepr, B: TensorBroker> Tensor<A, B> {
         map: LegMapArg<K, V>,
     ) -> Result<Result<&mut A::E, A::Err>, B::Err>
     where
-        B: TranslateBroker<A::Index>,
+        B: TranslateMapper<A::Index>,
         B::Id: 'a,
     {
-        let v = { self.broker().translate(map)? };
+        let v = { self.mapper().translate(map)? };
         Ok(unsafe { self.repr_mut().get_mut_unchecked(v) })
     }
 }
@@ -118,7 +123,7 @@ impl<A: ElemGetMutRepr, B: TensorBroker> Tensor<A, B> {
 impl<
     'a,
     A: ElemGetRepr,
-    B: TranslateBroker<A::Index>,
+    B: TranslateMapper<A::Index>,
     K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
     V: ExactSizeIterator + Iterator<Item = A::Index>,
 > core::ops::Index<LegMapArg<K, V>> for Tensor<A, B>
@@ -136,7 +141,7 @@ where
 impl<
     'a,
     T: ElemGetMutRepr,
-    B: TranslateBroker<T::Index>,
+    B: TranslateMapper<T::Index>,
     K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
     V: ExactSizeIterator + Iterator<Item = T::Index>,
 > core::ops::IndexMut<LegMapArg<K, V>> for Tensor<T, B>

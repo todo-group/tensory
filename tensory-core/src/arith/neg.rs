@@ -1,4 +1,4 @@
-use crate::tensor::{Tensor, TensorBroker, TensorRepr};
+use crate::{mapper::AxisMapper, repr::TensorRepr, tensor::Tensor};
 
 /// Raw context of negation operation.
 ///
@@ -17,12 +17,12 @@ pub unsafe trait NegationContext<A: TensorRepr> {
     fn negate(self, a: A) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorNeg<A: TensorRepr, B: TensorBroker> {
+pub struct TensorNeg<A: TensorRepr, B: AxisMapper> {
     a: A,
     res_broker: B,
 }
 
-impl<A: TensorRepr, B: TensorBroker> TensorNeg<A, B> {
+impl<A: TensorRepr, B: AxisMapper> TensorNeg<A, B> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -36,7 +36,7 @@ impl<A: TensorRepr, B: TensorBroker> TensorNeg<A, B> {
     }
 }
 
-impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
+impl<A: TensorRepr, B: AxisMapper> Tensor<A, B> {
     pub fn neg(self) -> TensorNeg<A, B> {
         let (a, mgr) = self.into_raw();
         TensorNeg { a, res_broker: mgr }

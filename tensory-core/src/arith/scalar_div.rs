@@ -1,6 +1,6 @@
 use core::ops::Div;
 
-use crate::tensor::{Tensor, TensorBroker, TensorRepr};
+use crate::{mapper::AxisMapper, repr::TensorRepr, tensor::Tensor};
 
 /// Raw context of left scalar division operation.
 ///
@@ -19,13 +19,13 @@ pub unsafe trait LeftScalarDivContext<A: TensorRepr, E> {
     fn left_scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorLeftScalarDiv<A: TensorRepr, B: TensorBroker, E> {
+pub struct TensorLeftScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
-    res_broker: B,
+    res_broker: M,
 }
 
-impl<A: TensorRepr, B: TensorBroker, E> TensorLeftScalarDiv<A, B, E> {
+impl<A: TensorRepr, M: AxisMapper, E> TensorLeftScalarDiv<A, M, E> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -33,7 +33,7 @@ impl<A: TensorRepr, B: TensorBroker, E> TensorLeftScalarDiv<A, B, E> {
     pub fn with<C: LeftScalarDivContext<A, E>>(
         self,
         context: C,
-    ) -> Result<Tensor<C::Res, B>, C::Err> {
+    ) -> Result<Tensor<C::Res, M>, C::Err> {
         let a = self.a;
         let scalar = self.scalar;
 
@@ -60,13 +60,13 @@ pub unsafe trait RightScalarDivContext<A: TensorRepr, E> {
     fn right_scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorRightScalarDiv<A: TensorRepr, B: TensorBroker, E> {
+pub struct TensorRightScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
-    res_broker: B,
+    res_broker: M,
 }
 
-impl<A: TensorRepr, B: TensorBroker, E> TensorRightScalarDiv<A, B, E> {
+impl<A: TensorRepr, M: AxisMapper, E> TensorRightScalarDiv<A, M, E> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -74,7 +74,7 @@ impl<A: TensorRepr, B: TensorBroker, E> TensorRightScalarDiv<A, B, E> {
     pub fn with<C: RightScalarDivContext<A, E>>(
         self,
         context: C,
-    ) -> Result<Tensor<C::Res, B>, C::Err> {
+    ) -> Result<Tensor<C::Res, M>, C::Err> {
         let a = self.a;
         let scalar = self.scalar;
 
@@ -121,8 +121,8 @@ unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivContext<A, E>> RightScalarD
     }
 }
 
-impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
-    pub fn left_div<E>(self, lhs: E) -> TensorLeftScalarDiv<A, B, E> {
+impl<A: TensorRepr, M: AxisMapper> Tensor<A, M> {
+    pub fn left_div<E>(self, lhs: E) -> TensorLeftScalarDiv<A, M, E> {
         let (a, broker) = self.into_raw();
         TensorLeftScalarDiv {
             a,
@@ -130,7 +130,7 @@ impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
             res_broker: broker,
         }
     }
-    pub fn right_div<E>(self, rhs: E) -> TensorRightScalarDiv<A, B, E> {
+    pub fn right_div<E>(self, rhs: E) -> TensorRightScalarDiv<A, M, E> {
         let (a, broker) = self.into_raw();
         TensorRightScalarDiv {
             a,
@@ -159,8 +159,8 @@ impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
 // impl TensorScalar for f64 {}
 // //impl TensorScalar for f128 {}
 
-impl<A: TensorRepr, B: TensorBroker, E> Div<(E,)> for Tensor<A, B> {
-    type Output = TensorRightScalarDiv<A, B, E>;
+impl<A: TensorRepr, M: AxisMapper, E> Div<(E,)> for Tensor<A, M> {
+    type Output = TensorRightScalarDiv<A, M, E>;
 
     fn div(self, rhs: (E,)) -> Self::Output {
         self.right_div(rhs.0)

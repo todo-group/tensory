@@ -1,8 +1,10 @@
 use core::ops::Add;
 
-use crate::tensor::{
-    OverlayAxisOrigin, OverlayBroker, RuntimeError, Tensor, TensorBroker, TensorRepr,
-    TensorWithRuntime,
+use crate::{
+    mapper::{AxisMapper, OverlayAxisMapping, OverlayMapper},
+    repr::TensorRepr,
+    tensor::Tensor,
+    tensor_with_runtime::{RuntimeError, TensorWithRuntime},
 };
 
 /// Raw context of addition operation.
@@ -25,7 +27,7 @@ pub unsafe trait AddCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
         self,
         lhs: Lhs,
         rhs: Rhs,
-        axis_origin: OverlayAxisOrigin<2>,
+        axis_mapping: OverlayAxisMapping<2>,
     ) -> Result<Self::Res, Self::Err>;
 }
 /// Safe version if AddCtxImpl.
@@ -36,7 +38,7 @@ pub trait AddCtx<Lhs: TensorRepr, Rhs: TensorRepr>: AddCtxImpl<Lhs, Rhs> {
         self,
         lhs: Lhs,
         rhs: Rhs,
-        axis_origin: OverlayAxisOrigin<2>,
+        axis_mapping: OverlayAxisMapping<2>,
     ) -> Result<Self::Res, Self::Err>;
 }
 impl<C: AddCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> AddCtx<Lhs, Rhs> for C {
@@ -44,29 +46,29 @@ impl<C: AddCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> AddCtx<Lhs, Rhs>
         self,
         lhs: Lhs,
         rhs: Rhs,
-        axis_origin: OverlayAxisOrigin<2>,
+        axis_mapping: OverlayAxisMapping<2>,
     ) -> Result<Self::Res, Self::Err> {
         let n_l = lhs.dim();
         let n_r = rhs.dim();
-        let n = axis_origin.len();
+        let n = axis_mapping.dim();
         if n_l != n || n_r != n {
             panic!("axis_origin must match the number of axes with lhs and rhs");
         }
-        unsafe { self.add_unchecked(lhs, rhs, axis_origin) }
+        unsafe { self.add_unchecked(lhs, rhs, axis_mapping) }
     }
 }
 
-pub struct TensorAdd<L: TensorRepr, R: TensorRepr, B: TensorBroker> {
+pub struct TensorAdd<L: TensorRepr, R: TensorRepr, B: AxisMapper> {
     lhs: L,
     rhs: R,
-    axis_origin: OverlayAxisOrigin<2>,
+    axis_origin: OverlayAxisMapping<2>,
     res_mgr: B,
 }
-impl<L: TensorRepr, R: TensorRepr, B: TensorBroker> TensorAdd<L, R, B> {
+impl<L: TensorRepr, R: TensorRepr, B: AxisMapper> TensorAdd<L, R, B> {
     pub unsafe fn from_raw_unchecked(
         lhs: L,
         rhs: R,
-        axis_origin: OverlayAxisOrigin<2>,
+        axis_origin: OverlayAxisMapping<2>,
         res_mgr: B,
     ) -> Self {
         Self {
@@ -76,11 +78,11 @@ impl<L: TensorRepr, R: TensorRepr, B: TensorBroker> TensorAdd<L, R, B> {
             res_mgr,
         }
     }
-    pub fn from_raw(lhs: L, rhs: R, axis_origin: OverlayAxisOrigin<2>, res_broker: B) -> Self {
+    pub fn from_raw(lhs: L, rhs: R, axis_origin: OverlayAxisMapping<2>, res_broker: B) -> Self {
         let n_l = lhs.dim();
         let n_r = rhs.dim();
-        let n = axis_origin.len();
-        let n_m = res_broker.len();
+        let n = axis_origin.dim();
+        let n_m = res_broker.dim();
         if n_l != n || n_r != n || n_m != n {
             panic!("lhs, rhs, axis_origin, res_broker must match the number of axes");
         }
@@ -97,7 +99,7 @@ impl<L: TensorRepr, R: TensorRepr, B: TensorBroker> TensorAdd<L, R, B> {
     }
 }
 
-impl<L: TensorRepr, R: TensorRepr, B: OverlayBroker<2>> Add<Tensor<R, B>> for Tensor<L, B> {
+impl<L: TensorRepr, R: TensorRepr, B: OverlayMapper<2>> Add<Tensor<R, B>> for Tensor<L, B> {
     type Output = Result<TensorAdd<L, R, B>, B::Err>;
 
     fn add(self, rhs: Tensor<R, B>) -> Self::Output {
@@ -115,7 +117,7 @@ impl<L: TensorRepr, R: TensorRepr, B: OverlayBroker<2>> Add<Tensor<R, B>> for Te
     }
 }
 
-impl<'rt, L: TensorRepr, R: TensorRepr, B: OverlayBroker<2>, RT: Eq>
+impl<'rt, L: TensorRepr, R: TensorRepr, B: OverlayMapper<2>, RT: Eq>
     Add<TensorWithRuntime<'rt, R, B, RT>> for TensorWithRuntime<'rt, L, B, RT>
 where
     &'rt RT: AddCtxImpl<L, R>,

@@ -1,6 +1,6 @@
 use core::ops::Mul;
 
-use crate::tensor::{Tensor, TensorBroker, TensorRepr};
+use crate::{mapper::AxisMapper, repr::TensorRepr, tensor::Tensor};
 
 /// Raw context of left scalar multiplication operation.
 ///
@@ -19,13 +19,13 @@ pub unsafe trait LeftScalarMulContext<A: TensorRepr, E> {
     fn left_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorLeftScalarMul<A: TensorRepr, B: TensorBroker, E> {
+pub struct TensorLeftScalarMul<A: TensorRepr, B: AxisMapper, E> {
     a: A,
     scalar: E,
     res_broker: B,
 }
 
-impl<A: TensorRepr, B: TensorBroker, E> TensorLeftScalarMul<A, B, E> {
+impl<A: TensorRepr, B: AxisMapper, E> TensorLeftScalarMul<A, B, E> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -60,13 +60,13 @@ pub unsafe trait RightScalarMulContext<A: TensorRepr, E> {
     fn right_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorRightScalarMul<A: TensorRepr, B: TensorBroker, E> {
+pub struct TensorRightScalarMul<A: TensorRepr, B: AxisMapper, E> {
     a: A,
     scalar: E,
     res_broker: B,
 }
 
-impl<A: TensorRepr, B: TensorBroker, E> TensorRightScalarMul<A, B, E> {
+impl<A: TensorRepr, B: AxisMapper, E> TensorRightScalarMul<A, B, E> {
     // pub fn new(a: Tensor<LA, A>) -> Self {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
@@ -121,7 +121,7 @@ unsafe impl<A: TensorRepr, E, C: CommutativeScalarMulContext<A, E>> RightScalarM
     }
 }
 
-impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
+impl<A: TensorRepr, B: AxisMapper> Tensor<A, B> {
     pub fn left_mul<E>(self, lhs: E) -> TensorLeftScalarMul<A, B, E> {
         let (a, broker) = self.into_raw();
         TensorLeftScalarMul {
@@ -140,7 +140,7 @@ impl<A: TensorRepr, B: TensorBroker> Tensor<A, B> {
     }
 }
 
-impl<A: TensorRepr, B: TensorBroker, E> Mul<(E,)> for Tensor<A, B> {
+impl<A: TensorRepr, B: AxisMapper, E> Mul<(E,)> for Tensor<A, B> {
     type Output = TensorRightScalarMul<A, B, E>;
 
     fn mul(self, rhs: (E,)) -> Self::Output {
@@ -148,7 +148,7 @@ impl<A: TensorRepr, B: TensorBroker, E> Mul<(E,)> for Tensor<A, B> {
     }
 }
 
-impl<A: TensorRepr, B: TensorBroker, E> Mul<Tensor<A, B>> for (E,) {
+impl<A: TensorRepr, B: AxisMapper, E> Mul<Tensor<A, B>> for (E,) {
     type Output = TensorLeftScalarMul<A, B, E>;
 
     fn mul(self, rhs: Tensor<A, B>) -> Self::Output {

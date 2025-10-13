@@ -10,7 +10,7 @@ use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayD, ArrayView1, ArrayView2, CowArray, Data, Dimension,
     ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot, s,
 };
-use ndarray_linalg::{QR, SVDInto, Scalar, conjugate, svd::SVD};
+use ndarray_linalg::{QR, SVDDCInto, SVDInto, Scalar, conjugate, svd::SVD};
 use num_traits::{ConstZero, clamp};
 
 type Result<T> = core::result::Result<T, TenalgError>;
@@ -206,7 +206,54 @@ where
     let right_full_ix: Ix = right_ixs.iter().product();
 
     let x_mat = ten_to_mat(&x, [left_full_ix, right_full_ix])?;
-    if let (Some(u_mat), s_vec, Some(v_mat)) = x_mat.svd_into(true, true)? {
+
+    if let (Some(u_mat), s_vec, Some(v_mat)) = { x_mat.svd_into(true, true)? } {
+        let (u_mat_narrowed, s_vec_narrowed, v_mat_narrowed, s_ix) =
+            filter_singular_value(&u_mat, &s_vec, &v_mat, s_filter)?;
+
+        let u_ixs: Vec<Ix> = [left_ixs, &[s_ix]].concat();
+        let v_ixs: Vec<Ix> = [&[s_ix], right_ixs].concat();
+
+        let u = mat_to_ten(&u_mat_narrowed, u_ixs)?.into_owned();
+        let s = s_vec_narrowed.into_owned();
+        let v = mat_to_ten(&v_mat_narrowed, v_ixs)?.into_owned();
+        Ok((u, s, v))
+    } else {
+        Err(TenalgError::InvalidResult)
+    }
+}
+
+pub fn into_svddc<S: Data, D: Dimension, SU: Data, SS: Data, SV: Data, F: CutFilter<SS::Elem>>(
+    x: ArrayBase<S, D>,
+    left_dim: usize,
+    s_filter: F,
+) -> Result<(ArrayD<SU::Elem>, Array1<SS::Elem>, ArrayD<SV::Elem>)>
+where
+    S::Elem: Clone,
+    SU::Elem: Clone,
+    SV::Elem: Clone,
+    SS::Elem: Clone + Scalar,
+    <SS::Elem as Scalar>::Real: ConstZero,
+    for<'x> CowArray<'x, S::Elem, Ix2>:
+        SVDDCInto<U = ArrayBase<SU, Ix2>, Sigma = ArrayBase<SS, Ix1>, VT = ArrayBase<SV, Ix2>>,
+{
+    let x_ixs = x.shape();
+    let x_dim = x_ixs.len();
+
+    if x_dim < left_dim {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+    let (left_ixs, right_ixs) = x_ixs.split_at(left_dim);
+
+    let left_full_ix: Ix = left_ixs.iter().product();
+    let right_full_ix: Ix = right_ixs.iter().product();
+
+    let x_mat = ten_to_mat(&x, [left_full_ix, right_full_ix])?;
+
+    if let (Some(u_mat), s_vec, Some(v_mat)) = {
+        //x_mat.svd_into(true, true)?
+        SVDDCInto::svddc_into(x_mat, ndarray_linalg::JobSvd::Some)?
+    } {
         let (u_mat_narrowed, s_vec_narrowed, v_mat_narrowed, s_ix) =
             filter_singular_value(&u_mat, &s_vec, &v_mat, s_filter)?;
 
@@ -658,21 +705,23 @@ mod test {
     use std::println;
 
     use ndarray::{Array, Ix2};
-    use ndarray_linalg::{SVD, random};
+    use ndarray_linalg::{JobSvd, SVDDC, random};
 
     #[test]
     fn svd_speedtest() {
-        let x: Array<f64, Ix2> = random([200, 3000]);
+        let x: Array<f64, Ix2> = random([400, 400]);
         println!("{:?}", x.shape());
 
         let pre = chrono::Local::now();
 
-        let x = x.svd(true, true).unwrap();
+        if let (Some(u), s, Some(v)) = x.svddc(JobSvd::Some).unwrap() {
+            println!("{:?}", u.shape());
+            println!("{:?}", s.shape());
+            println!("{:?}", v.shape());
+        }
 
         let post = chrono::Local::now();
 
         println!("{}", post - pre);
-
-        panic!();
     }
 }

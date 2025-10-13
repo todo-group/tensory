@@ -1,4 +1,4 @@
-use crate::core::tensor::TensorRepr;
+use crate::repr::TensorRepr;
 
 /// Tensor representation providing the information of each axis, WITHOUT checking bounds.
 pub trait AxisInfoImpl: TensorRepr {
@@ -13,14 +13,13 @@ pub trait AxisInfoImpl: TensorRepr {
 /// The blanket implementation checks bounds.
 pub trait AxisInfo: AxisInfoImpl {
     /// Returns the information for the given axis, with checking bounds.
-    fn axis_info(&self, i: usize) -> Result<Self::AxisInfo, AxisOutOfRangeError>;
+    fn axis_info(&self, i: usize) -> Self::AxisInfo;
 }
 impl<T: AxisInfoImpl> AxisInfo for T {
-    fn axis_info(&self, i: usize) -> Result<Self::AxisInfo, AxisOutOfRangeError> {
-        if i < self.dim() {
-            Ok(unsafe { self.axis_info_unchecked(i) })
-        } else {
-            Err(AxisOutOfRangeError)
+    fn axis_info(&self, i: usize) -> Self::AxisInfo {
+        if i >= self.dim() {
+            panic!("dim not match")
         }
+        unsafe { self.axis_info_unchecked(i) }
     }
 }

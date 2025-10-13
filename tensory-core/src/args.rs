@@ -1,11 +1,20 @@
+//! useful args when IDs involved
+
 #[macro_export]
 macro_rules! leg {
     ( $( $x:expr ),* ) => {
-        $crate::tensor::LegSetArg::from_raw([$($x),*].into_iter())
+        $crate::args::LegSetArg::from_raw([$($x),*].into_iter())
     };
     ( $( $x:expr => $y:expr ),* ) => {
-        unsafe{$crate::tensor::LegMapArg::from_raw_unchecked([$($x),*].into_iter(),[$($y),*].into_iter())}
+        $crate::args::_from_array_pair([$($x),*],[$($y),*])
     };
+}
+
+pub fn _from_array_pair<K, V, const N: usize>(
+    keys: [K; N],
+    values: [V; N],
+) -> LegMapArg<<[K; N] as IntoIterator>::IntoIter, <[V; N] as IntoIterator>::IntoIter> {
+    unsafe { LegMapArg::from_raw_unchecked(keys.into_iter(), values.into_iter()) }
 }
 
 // impl<Id: Eq> LegAlloc<Id> {

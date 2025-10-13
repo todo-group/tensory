@@ -1,4 +1,4 @@
-use crate::tensor::{OverlayAxisOrigin, TensorRepr};
+use crate::{mapper::OverlayAxisMapping, repr::TensorRepr};
 
 /// Raw context of left subtraction operation.
 ///
@@ -20,6 +20,6 @@ pub unsafe trait LeftSubCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
         self,
         lhs: Lhs,
         rhs: Rhs,
-        axis_origin: OverlayAxisOrigin<2>,
+        axis_origin: OverlayAxisMapping<2>,
     ) -> Result<Self::Res, Self::Err>;
 }

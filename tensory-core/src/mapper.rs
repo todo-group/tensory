@@ -1,74 +1,94 @@
-// use alloc::collections::BTreeMap;
-// use core::{error, fmt};
-
-// use alloc::vec::Vec;
-
-// /// leg - axis map
-// #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-// pub struct LegAlloc<Id: Eq> {
-//     legs: Vec<Id>,
-// }
+//! Mapper concept: translator between layer 1 and 2 axis descriptions.
 
 use alloc::vec;
 
 use alloc::vec::Vec;
 use thiserror::Error;
 
-use crate::tensor::leg::LegMapArg;
+use crate::args::LegMapArg;
 
-pub trait TensorBroker: Sized {
-    type Id: Eq + Clone;
-    fn len(&self) -> usize;
+/// Minimal interface for tensor axis mappers.
+///
+/// In the logical model, a mapper is a injective mapping from usize indices `0`, `1`, ..., `dim()-1`, each representing an axis of a tensor, to unique ID indices.
+///
+/// In the conceptual model, a mapper `m` is sound if and only if it is bound with a tensor repr `a` satisfying `m.dim() == a.dim()`, and the compound behaves as a tensor with axes indexed by locally-unique IDs. We refer the axes indexed with IDs, as described before, as "legs". See `Tensor` for more integrated explanation of the concept of legs.
+///
+/// In practice, a type implementing this trait serves as a opaque translator between the usize indices and the ID indices. The actual mapping is not exposed in this trait, and the core functions are defined as sub-traits e.g. `OverlayMapper`.
+///
+/// # Safety
+///
+/// The implementor MUST ensure the following invariants:
+///
+/// - The number of axes (=: dim()) is same with the number of axes of the bound tensor representation, even through mutable operations. (this also means the number of axes is fixed for the same object)
+/// - The mapping from usize indices and ID indices are never changed for the same object, even through mutable operations.
+///
+/// We refer the above invariants AND axis structure together as "semantic structure of legs" or simply "leg structure".
+///
+/// `mem::{swap,replace,take,...}` syntactically violate the above conditons, but these operations semantically do not change the objects but move them. So we think the above conditions are not violated by these operations.
+///
+/// Implicitly (by definition), the implementor MUST ensure the following condition:
+///
+/// - The ID is locally unique; for the same mapper object, no two axes are mapped to the same ID.
+///
+/// # Note
+///
+/// The implementor MAY implement mapping modification operations (e.g. `replace`,`swap`,`remap`) as by-value methods. `Tensor` provides hatches to use by-value modifications.
+pub unsafe trait AxisMapper: Sized {
+    /// The type of unique IDs used as indices the axes.
+    type Id: Eq;
+    /// Returns the number of axes of the tensor. this number is fixed for the same object even through mutable operations.
+    ///
+    /// this function serves as a dynamic version of `const N:usize`.
+    fn dim(&self) -> usize;
 }
 
-pub trait BuildableBroker<P>: TensorBroker {
+pub trait BuildableMapper<P>: AxisMapper {
     type Err;
-    fn build(provider: P) -> Result<Self, Self::Err>;
+    fn build(precursor: P) -> Result<Self, Self::Err>;
 }
 
-pub unsafe trait OverlayBroker<const N: usize>: TensorBroker {
+pub unsafe trait OverlayMapper<const N: usize>: AxisMapper {
     type Err;
-    fn overlay(brokers: [Self; N]) -> Result<(Self, OverlayAxisOrigin<N>), Self::Err>;
+    fn overlay(mappers: [Self; N]) -> Result<(Self, OverlayAxisMapping<N>), Self::Err>;
 }
 
-pub struct OverlayAxisOrigin<const N: usize> {
-    axes: Vec<[usize; N]>,
+pub struct OverlayAxisMapping<const N: usize> {
+    n: usize,
+    maps: [Vec<usize>; N],
 }
-impl<const N: usize> OverlayAxisOrigin<N> {
-    pub unsafe fn from_raw_unchecked(raw: Vec<[usize; N]>) -> Self {
-        Self { axes: raw }
+impl<const N: usize> OverlayAxisMapping<N> {
+    pub unsafe fn from_raw_unchecked(n: usize, maps: [Vec<usize>; N]) -> Self {
+        Self { n, maps }
     }
-    pub fn from_raw(raw: Vec<[usize; N]>) -> Result<Self, Vec<[usize; N]>> {
-        let n = raw.len();
-
+    pub fn from_raw(n: usize, maps: [Vec<usize>; N]) -> Result<Self, (usize, [Vec<usize>; N])> {
         let mut seen = vec![false; n];
         for lane in 0..N {
             for i in 0..n {
                 seen[i] = false;
             }
             for i in 0..n {
-                if raw[i][lane] >= n {
-                    return Err(raw);
+                if maps[lane][i] >= n {
+                    return Err((n, maps));
                 }
-                if seen[raw[i][lane]] {
-                    return Err(raw);
+                if seen[maps[i][lane]] {
+                    return Err((n, maps));
                 }
-                seen[raw[i][lane]] = true;
+                seen[maps[i][lane]] = true;
             }
         }
-        Ok(unsafe { Self::from_raw_unchecked(raw) })
+        Ok(unsafe { Self::from_raw_unchecked(n, maps) })
     }
-    pub fn len(&self) -> usize {
-        self.axes.len()
+    pub fn dim(&self) -> usize {
+        self.n
     }
-    pub fn into_raw(self) -> Vec<[usize; N]> {
-        self.axes
+    pub fn into_raw(self) -> (usize, [Vec<usize>; N]) {
+        (self.n, self.maps)
     }
 }
 
-pub unsafe trait ConnectBroker<const N: usize>: TensorBroker {
+pub unsafe trait ConnectMapper<const N: usize>: AxisMapper {
     type Err;
-    fn connect(brokers: [Self; N]) -> Result<(Self, ConnectAxisOrigin<N>), Self::Err>;
+    fn connect(mappers: [Self; N]) -> Result<(Self, ConnectAxisOrigin<N>), Self::Err>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,8 +143,8 @@ impl<const N: usize> ConnectAxisOrigin<N> {
     }
 }
 
-pub unsafe trait GroupBroker<const N: usize, Q>: TensorBroker {
-    type Grouped: GroupedBroker<N, Broker = Self>;
+pub unsafe trait GroupMapper<const N: usize, Q>: AxisMapper {
+    type Grouped: GroupedMapper<N, Mapper = Self>;
     type Err;
     fn split(self, queue: Q) -> Result<(Self::Grouped, GroupedAxes<N>), Self::Err>;
 }
@@ -161,28 +181,28 @@ impl<const N: usize> GroupedAxes<N> {
     }
 }
 
-// pub unsafe trait SameGroupBroker<const N: usize, Q>: TensorBroker {
-//     type Grouped: GroupedBroker<N, Broker = Self>;
-//     type Err;
-//     fn split(self, queue: Q) -> Result<(Self::Grouped, SameGroupedAxes<N>), Self::Err>;
-// }
-// pub struct SameGroupedAxes<const N: usize> {
-//     len: usize,
-//     groups: [Vec<usize>; N],
-// }
-
-pub unsafe trait GroupedBroker<const N: usize> {
-    type Broker: TensorBroker;
+pub unsafe trait EquivGroupMapper<const N: usize, Q>: AxisMapper {
+    type Grouped: GroupedMapper<N, Mapper = Self>;
+    type Err;
+    fn split(self, queue: Q) -> Result<(Self::Grouped, EquivGroupedAxes<N>), Self::Err>;
+}
+pub struct EquivGroupedAxes<const N: usize> {
+    len: usize,
+    groups: [Vec<usize>; N],
 }
 
-pub unsafe trait DecompGroupedBroker<const N: usize, const M: usize>:
-    GroupedBroker<N>
+pub unsafe trait GroupedMapper<const N: usize> {
+    type Mapper: AxisMapper;
+}
+
+pub unsafe trait DecompGroupedMapper<const N: usize, const M: usize>:
+    GroupedMapper<N>
 {
     type Err;
     fn decomp(
         self,
-        conf: DecompConf<N, M, <Self::Broker as TensorBroker>::Id>,
-    ) -> Result<[Self::Broker; M], Self::Err>;
+        conf: DecompConf<N, M, <Self::Mapper as AxisMapper>::Id>,
+    ) -> Result<[Self::Mapper; M], Self::Err>;
 }
 pub struct DecompConf<const N: usize, const M: usize, Id> {
     group_belongs: [usize; N],
@@ -219,7 +239,7 @@ impl<const N: usize, const M: usize, Id> DecompConf<N, M, Id> {
     }
 }
 
-pub trait TranslateBroker<Content>: TensorBroker {
+pub trait TranslateMapper<Content>: AxisMapper {
     type Err;
     fn translate<
         'a,
@@ -230,7 +250,7 @@ pub trait TranslateBroker<Content>: TensorBroker {
         map: LegMapArg<K, V>,
     ) -> Result<Vec<Content>, Self::Err>
     where
-        <Self as TensorBroker>::Id: 'a;
+        <Self as AxisMapper>::Id: 'a;
 }
 
 #[derive(Error, Debug)]
@@ -241,7 +261,7 @@ pub enum DecompError<SE, DE> {
     Decomp(DE),
 }
 
-pub trait ReplaceBroker: TensorBroker {
+pub trait ReplaceMapper: AxisMapper {
     type Err;
     fn replace(self, old_leg: &Self::Id, new_leg: Self::Id) -> Result<Self, Self::Err>;
 }
