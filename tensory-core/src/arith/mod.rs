@@ -1,8 +1,8 @@
 //! Provide pluggable way to implement arithmetic operations
 
-// /// provide interface for tensor-tensor addition
-// mod add;
-// pub use add::*;
+/// provide interface for tensor-tensor addition
+mod add;
+pub use add::*;
 
 // /// provide interface for tensor-tensor subtraction
 // mod sub;

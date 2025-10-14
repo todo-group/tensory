@@ -2,7 +2,7 @@ use core::ops::Mul;
 
 use crate::{
     mapper::{AxisMapper, ConnectAxisOrigin, ConnectMapper},
-    repr::{AsViewMutRepr, AsViewRepr, TensorRepr},
+    repr::TensorRepr,
     tensor::{Tensor, ToTensor},
     tensor_with_runtime::{RuntimeError, TensorWithRuntime},
 };
@@ -52,7 +52,7 @@ impl<C: MulCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> MulCtx<Lhs, Rhs>
         rhs: Rhs,
         axis_origin: ConnectAxisOrigin<2>,
     ) -> Result<Self::Res, Self::Err> {
-        if axis_origin.in_lens() != [lhs.dim(), rhs.dim()] {
+        if axis_origin.in_lens() != [lhs.naxes(), rhs.naxes()] {
             panic!("axis_origin must match the number of axes with lhs and rhs");
         }
 
@@ -120,242 +120,97 @@ impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorMul<L, R, M> {
 // 9 combinations of Lhs/Rhs being owned/view/view_mut
 
 macro_rules! impl_mul {
-    ($m:ty,$l:ty,$r:ty) => {
-        type Output = Result<
-            TensorMul<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr, $m>,
-            <$m as ConnectMapper<2>>::Err,
-        >;
-        fn mul(self, rhs: $r) -> Self::Output {
-            let lhs = ToTensor::to_tensor(self);
-            let rhs = ToTensor::to_tensor(rhs);
-            TensorMul::try_by_manager(lhs, rhs, |l, r| ConnectMapper::<2>::connect([l, r]))
+    ($l:ty,$r:ty $(,$life:lifetime)* ) => {
+        impl<$($life,)* L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>> Mul<$r> for $l
+        where
+            $l: ToTensor<Mapper = M>,
+            $r: ToTensor<Mapper = M>,
+        {
+            type Output = Result<
+                TensorMul<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr, M>,
+                <M as ConnectMapper<2>>::Err,
+            >;
+            fn mul(self, rhs: $r) -> Self::Output {
+                let lhs = ToTensor::to_tensor(self);
+                let rhs = ToTensor::to_tensor(rhs);
+                TensorMul::try_by_manager(lhs, rhs, |l, r| ConnectMapper::<2>::connect([l, r]))
+            }
         }
     };
 }
 
-impl<L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>> Mul<Tensor<R, M>> for Tensor<L, M> {
-    impl_mul!(M, Tensor<L, M>, Tensor<R, M>);
-}
-impl<'r, L: TensorRepr, R: TensorRepr + AsViewRepr<'r>, M: ConnectMapper<2> + Clone>
-    Mul<&'r Tensor<R, M>> for Tensor<L, M>
-{
-    impl_mul!(M, Tensor<L, M>, &'r Tensor<R, M>);
-}
-impl<'r, L: TensorRepr, R: TensorRepr + AsViewMutRepr<'r>, M: ConnectMapper<2> + Clone>
-    Mul<&'r mut Tensor<R, M>> for Tensor<L, M>
-{
-    impl_mul!(M, Tensor<L, M>, &'r mut Tensor<R, M>);
-}
-
-impl<'l, L: TensorRepr + AsViewRepr<'l>, R: TensorRepr, M: ConnectMapper<2> + Clone>
-    Mul<Tensor<R, M>> for &'l Tensor<L, M>
-{
-    impl_mul!(M, &'l Tensor<L, M>, Tensor<R, M>);
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewRepr<'l>,
-    R: TensorRepr + AsViewRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-> Mul<&'r Tensor<R, M>> for &'l Tensor<L, M>
-{
-    impl_mul!(M, &'l Tensor<L, M>, &'r Tensor<R, M>);
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewRepr<'l>,
-    R: TensorRepr + AsViewMutRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-> Mul<&'r mut Tensor<R, M>> for &'l Tensor<L, M>
-{
-    impl_mul!(M, &'l Tensor<L, M>, &'r mut Tensor<R, M>);
-}
-
-impl<'l, L: TensorRepr + AsViewMutRepr<'l>, R: TensorRepr, M: ConnectMapper<2> + Clone>
-    Mul<Tensor<R, M>> for &'l mut Tensor<L, M>
-{
-    impl_mul!(M, &'l mut Tensor<L, M>, Tensor<R, M>);
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewMutRepr<'l>,
-    R: TensorRepr + AsViewRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-> Mul<&'r Tensor<R, M>> for &'l mut Tensor<L, M>
-{
-    impl_mul!(M, &'l mut Tensor<L, M>, &'r Tensor<R, M>);
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewMutRepr<'l>,
-    R: TensorRepr + AsViewMutRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-> Mul<&'r mut Tensor<R, M>> for &'l mut Tensor<L, M>
-{
-    impl_mul!(M, &'l mut Tensor<L, M>, &'r mut Tensor<R, M>);
-}
+impl_mul!(Tensor<L, M>, Tensor<R, M>);
+impl_mul!(&'l Tensor<L, M>, Tensor<R, M>,'l);
+impl_mul!(&'l mut Tensor<L, M>, Tensor<R, M>,'l);
+impl_mul!(Tensor<L, M>, &'r Tensor<R, M>,'r);
+impl_mul!(&'l Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
+impl_mul!(&'l mut Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
+impl_mul!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
+impl_mul!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
+impl_mul!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 
 pub trait MulRuntime<Lhs: TensorRepr, Rhs: TensorRepr> {
     type Ctx: MulCtxImpl<Lhs, Rhs>;
     fn mul_ctx(self) -> Self::Ctx;
 }
 
-// 9 combinations of Lhs/Rhs being owned/view/view_mut
+// // 9 combinations of Lhs/Rhs being owned/view/view_mut
 use crate::tensor_with_runtime::ToTensorWithRuntime;
 
 macro_rules! impl_mul_runtime {
-    ($rt:ty,$m:ty,$l:ty,$r:ty) => {
-        type Output = Result<
-            TensorWithRuntime<
-                <<$rt as MulRuntime<
-                    <$l as ToTensorWithRuntime>::Repr,
-                    <$r as ToTensorWithRuntime>::Repr,
-                >>::Ctx as MulCtxImpl<
-                    <$l as ToTensorWithRuntime>::Repr,
-                    <$r as ToTensorWithRuntime>::Repr,
-                >>::Res,
-                $m,
-                $rt,
-            >,
-            RuntimeError<
-                <$m as ConnectMapper<2>>::Err,
-                <<$rt as MulRuntime<
-                    <$l as ToTensorWithRuntime>::Repr,
-                    <$r as ToTensorWithRuntime>::Repr,
-                >>::Ctx as MulCtxImpl<
-                    <$l as ToTensorWithRuntime>::Repr,
-                    <$r as ToTensorWithRuntime>::Repr,
-                >>::Err,
-            >,
-        >;
-        fn mul(self, rhs: $r) -> Self::Output {
-            let (lhs, lhs_rt) = self.to_tensor_with_runtime().into_raw();
-            let (rhs, rhs_rt) = rhs.to_tensor_with_runtime().into_raw();
+    ($l:ty,$r:ty $(,$life:lifetime)*) => {
+        impl<$($life,)* L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>, RT> Mul<$r> for $l
+        where
+            $l: ToTensorWithRuntime<Mapper = M, Runtime = RT>,
+            $r: ToTensorWithRuntime<Mapper = M, Runtime = RT>,
+            RT: Copy + Eq + MulRuntime<<$l as ToTensorWithRuntime>::Repr, <$r as ToTensorWithRuntime>::Repr>,
+        {
+            type Output = Result<
+                TensorWithRuntime<
+                    <<RT as MulRuntime<
+                        <$l as ToTensorWithRuntime>::Repr,
+                        <$r as ToTensorWithRuntime>::Repr,
+                    >>::Ctx as MulCtxImpl<
+                        <$l as ToTensorWithRuntime>::Repr,
+                        <$r as ToTensorWithRuntime>::Repr,
+                    >>::Res,
+                    M,
+                    RT,
+                >,
+                RuntimeError<
+                    <M as ConnectMapper<2>>::Err,
+                    <<RT as MulRuntime<
+                        <$l as ToTensorWithRuntime>::Repr,
+                        <$r as ToTensorWithRuntime>::Repr,
+                    >>::Ctx as MulCtxImpl<
+                        <$l as ToTensorWithRuntime>::Repr,
+                        <$r as ToTensorWithRuntime>::Repr,
+                    >>::Err,
+                >,
+            >;
+            fn mul(self, rhs: $r) -> Self::Output {
+                let (lhs, lhs_rt) = self.to_tensor_with_runtime().into_raw();
+                let (rhs, rhs_rt) = rhs.to_tensor_with_runtime().into_raw();
 
-            if lhs_rt != rhs_rt {
-                return Err(RuntimeError::Runtime);
+                if lhs_rt != rhs_rt {
+                    return Err(RuntimeError::Runtime);
+                }
+                let res = (lhs * rhs)
+                    .map_err(RuntimeError::Axis)?
+                    .with(lhs_rt.mul_ctx())
+                    .map_err(RuntimeError::Ctx)?;
+                Ok(TensorWithRuntime::from_raw(res, lhs_rt))
             }
-            let res = (lhs * rhs)
-                .map_err(RuntimeError::Axis)?
-                .with(lhs_rt.mul_ctx())
-                .map_err(RuntimeError::Ctx)?;
-            Ok(TensorWithRuntime::from_raw(res, lhs_rt))
         }
     };
 }
 
-impl<L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>, RT: Copy + Eq + MulRuntime<L, R>>
-    Mul<TensorWithRuntime<R, M, RT>> for TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(RT, M, TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>);
-}
-impl<
-    'r,
-    L: TensorRepr,
-    R: TensorRepr + AsViewRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L, R::View>,
-> Mul<&'r TensorWithRuntime<R, M, RT>> for TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(RT, M, TensorWithRuntime<L, M, RT>, &'r TensorWithRuntime<R, M, RT>);
-}
-impl<
-    'r,
-    L: TensorRepr,
-    R: TensorRepr + AsViewMutRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L, R::ViewMut>,
-> Mul<&'r mut TensorWithRuntime<R, M, RT>> for TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(RT, M, TensorWithRuntime<L, M, RT>, &'r mut TensorWithRuntime<R, M, RT>);
-}
-
-impl<
-    'l,
-    L: TensorRepr + AsViewRepr<'l>,
-    R: TensorRepr,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L::View, R>,
-> Mul<TensorWithRuntime<R, M, RT>> for &'l TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(RT, M, &'l TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>);
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewRepr<'l>,
-    R: TensorRepr + AsViewRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L::View, R::View>,
-> Mul<&'r TensorWithRuntime<R, M, RT>> for &'l TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(
-        RT,
-        M,
-        &'l TensorWithRuntime<L, M, RT>,
-        &'r TensorWithRuntime<R, M, RT>
-    );
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewRepr<'l>,
-    R: TensorRepr + AsViewMutRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L::View, R::ViewMut>,
-> Mul<&'r mut TensorWithRuntime<R, M, RT>> for &'l TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(
-        RT,
-        M,
-        &'l TensorWithRuntime<L, M, RT>,
-        &'r mut TensorWithRuntime<R, M, RT>
-    );
-}
-
-impl<
-    'l,
-    L: TensorRepr + AsViewMutRepr<'l>,
-    R: TensorRepr,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L::ViewMut, R>,
-> Mul<TensorWithRuntime<R, M, RT>> for &'l mut TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(RT, M, &'l mut TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>);
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewMutRepr<'l>,
-    R: TensorRepr + AsViewRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L::ViewMut, R::View>,
-> Mul<&'r TensorWithRuntime<R, M, RT>> for &'l mut TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(
-        RT,
-        M,
-        &'l mut TensorWithRuntime<L, M, RT>,
-        &'r TensorWithRuntime<R, M, RT>
-    );
-}
-impl<
-    'l,
-    'r,
-    L: TensorRepr + AsViewMutRepr<'l>,
-    R: TensorRepr + AsViewMutRepr<'r>,
-    M: ConnectMapper<2> + Clone,
-    RT: Copy + Eq + MulRuntime<L::ViewMut, R::ViewMut>,
-> Mul<&'r mut TensorWithRuntime<R, M, RT>> for &'l mut TensorWithRuntime<L, M, RT>
-{
-    impl_mul_runtime!(
-        RT,
-        M,
-        &'l mut TensorWithRuntime<L, M, RT>,
-        &'r mut TensorWithRuntime<R, M, RT>
-    );
-}
+impl_mul_runtime!(TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>);
+impl_mul_runtime!(&'l TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>,'l);
+impl_mul_runtime!(&'l mut TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>,'l);
+impl_mul_runtime!(TensorWithRuntime<L, M, RT>, &'r TensorWithRuntime<R, M, RT>,'r);
+impl_mul_runtime!(&'l TensorWithRuntime<L, M, RT>, &'r TensorWithRuntime<R, M, RT>,'l,'r);
+impl_mul_runtime!(&'l mut TensorWithRuntime<L, M, RT>, &'r TensorWithRuntime<R, M, RT>,'l,'r);
+impl_mul_runtime!(TensorWithRuntime<L, M, RT>, &'r mut TensorWithRuntime<R, M, RT>,'r);
+impl_mul_runtime!(&'l TensorWithRuntime<L, M, RT>, &'r mut TensorWithRuntime<R, M, RT>,'l,'r);
+impl_mul_runtime!(&'l mut TensorWithRuntime<L, M, RT>, &'r mut TensorWithRuntime<R, M, RT>,'l,'r);

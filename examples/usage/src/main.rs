@@ -10,8 +10,8 @@ use std::{
 };
 
 use tensory_basic::{
-    broker::VecBroker,
     id::{Id128, Prime},
+    mapper::VecMapper,
 };
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
@@ -19,7 +19,7 @@ use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
 use tensory_core::leg;
 
 type Leg = Prime<Id128>;
-type Tensor<E> = NdDenseTensor<E, VecBroker<Leg>>;
+type Tensor<E> = NdDenseTensor<E, VecMapper<Leg>>;
 
 fn main() -> anyhow::Result<()> {
     // resource allocation aware
@@ -41,10 +41,16 @@ fn main() -> anyhow::Result<()> {
     let e_n = 50;
     let f_n = 60;
 
-    // // allocation aware syntax
-    // let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n]).unwrap();
-    // let tb = Tensor::random(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n]).unwrap();
-    // //let tc = Tensor::zero(v![a=>1, b=>2, e=>5, f=>6]);
+    // {
+    //     let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n])?;
+    //     let tb = Tensor::<f64>::random(leg![b=>b_n, c=>c_n, d=>d_n, a=>a_n])?;
+    //     let x = (&ta + &tb)?.with(())?;
+    // }
+
+    // allocation aware syntax
+    let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n])?;
+    let tb = Tensor::<f64>::random(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n])?;
+    let tc = Tensor::<f64>::zero(leg![a=>a_n, b=>b_n, e=>e_n, f=>f_n])?;
 
     // let nd = NdRuntime;
 
@@ -59,7 +65,7 @@ fn main() -> anyhow::Result<()> {
     let mut x = Duration::ZERO;
 
     let d = 20;
-    for t in 0..100 {
+    for t in 0..1 {
         println!("t = {}", t);
 
         let tx = Tensor::<f64>::random(leg![ b=>b_n, e=>e_n,a=>a_n, f=>f_n]).unwrap();

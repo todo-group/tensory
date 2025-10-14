@@ -1,14 +1,14 @@
 use num_complex::Complex;
 use tensory_basic::{
-    broker::VecBroker,
     id::{Id128, Prime},
+    mapper::VecMapper,
 };
 //use tensory_core::tensor::TensorRepr;
 use tensory_core::{args::LegMapArg, arith::Conj, leg};
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 type Leg = Prime<Id128>;
-type Tensor = NdDenseTensor<Complex<f64>, VecBroker<Leg>>;
+type Tensor = NdDenseTensor<Complex<f64>, VecMapper<Leg>>;
 fn main() -> anyhow::Result<()> {
     // Example usage of the negation operation
     let n = 10;

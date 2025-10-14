@@ -17,7 +17,7 @@ pub trait AxisInfo: AxisInfoImpl {
 }
 impl<T: AxisInfoImpl> AxisInfo for T {
     fn axis_info(&self, i: usize) -> Self::AxisInfo {
-        if i >= self.dim() {
+        if i >= self.naxes() {
             panic!("dim not match")
         }
         unsafe { self.axis_info_unchecked(i) }

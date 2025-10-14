@@ -9,9 +9,9 @@ use crate::args::LegMapArg;
 
 /// Minimal interface for tensor axis mappers.
 ///
-/// In the logical model, a mapper is a injective mapping from usize indices `0`, `1`, ..., `dim()-1`, each representing an axis of a tensor, to unique ID indices.
+/// In the logical model, a mapper is a injective mapping from usize indices `0`, `1`, ..., `naxes()-1`, each representing an axis of a tensor, to unique ID indices.
 ///
-/// In the conceptual model, a mapper `m` is sound if and only if it is bound with a tensor repr `a` satisfying `m.dim() == a.dim()`, and the compound behaves as a tensor with axes indexed by locally-unique IDs. We refer the axes indexed with IDs, as described before, as "legs". See `Tensor` for more integrated explanation of the concept of legs.
+/// In the conceptual model, a mapper `m` is sound if and only if it is bound with a tensor repr `a` satisfying `m.naxes() == a.naxes()`, and the compound behaves as a tensor with axes indexed by locally-unique IDs. We refer the axes indexed with IDs, as described before, as "legs". See `Tensor` for more integrated explanation of the concept of legs.
 ///
 /// In practice, a type implementing this trait serves as a opaque translator between the usize indices and the ID indices. The actual mapping is not exposed in this trait, and the core functions are defined as sub-traits e.g. `OverlayMapper`.
 ///
@@ -19,7 +19,7 @@ use crate::args::LegMapArg;
 ///
 /// The implementor MUST ensure the following invariants:
 ///
-/// - The number of axes (=: dim()) is same with the number of axes of the bound tensor representation, even through mutable operations. (this also means the number of axes is fixed for the same object)
+/// - The number of axes (=: naxes()) is same with the number of axes of the bound tensor representation, even through mutable operations. (this also means the number of axes is fixed for the same object)
 /// - The mapping from usize indices and ID indices are never changed for the same object, even through mutable operations.
 ///
 /// We refer the above invariants AND axis structure together as "semantic structure of legs" or simply "leg structure".
@@ -39,7 +39,7 @@ pub unsafe trait AxisMapper: Sized {
     /// Returns the number of axes of the tensor. this number is fixed for the same object even through mutable operations.
     ///
     /// this function serves as a dynamic version of `const N:usize`.
-    fn dim(&self) -> usize;
+    fn naxes(&self) -> usize;
 }
 
 pub trait BuildableMapper<P>: AxisMapper {
@@ -63,17 +63,17 @@ impl<const N: usize> OverlayAxisMapping<N> {
     pub fn from_raw(n: usize, maps: [Vec<usize>; N]) -> Result<Self, (usize, [Vec<usize>; N])> {
         let mut seen = vec![false; n];
         for lane in 0..N {
-            for i in 0..n {
-                seen[i] = false;
+            for i in seen.iter_mut().take(n) {
+                *i = false;
             }
             for i in 0..n {
                 if maps[lane][i] >= n {
                     return Err((n, maps));
                 }
-                if seen[maps[i][lane]] {
+                if seen[maps[lane][i]] {
                     return Err((n, maps));
                 }
-                seen[maps[i][lane]] = true;
+                seen[maps[lane][i]] = true;
             }
         }
         Ok(unsafe { Self::from_raw_unchecked(n, maps) })

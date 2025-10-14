@@ -34,20 +34,20 @@ pub struct Tensor<T: TensorRepr, M: AxisMapper> {
 }
 
 impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
-    /// Create a tensor from raw representation and mapper, checking the invariant `repr.dim() == mapper.dim()`.
+    /// Create a tensor from raw representation and mapper, checking the invariant `repr.naxes() == mapper.naxes()`.
     pub fn from_raw(repr: R, mapper: M) -> Result<Self, (R, M)> {
-        if repr.dim() == mapper.dim() {
+        if repr.naxes() == mapper.naxes() {
             Ok(unsafe { Self::from_raw_unchecked(repr, mapper) })
         } else {
             Err((repr, mapper))
         }
     }
 
-    /// Create a tensor from raw representation and mapper without checking the invariant `repr.dim() == mapper.dim()`.
+    /// Create a tensor from raw representation and mapper without checking the invariant `repr.naxes() == mapper.naxes()`.
     ///
     /// # Safety
     ///
-    /// caller must ensure the invariant `repr.dim() == mapper.dim()`
+    /// caller must ensure the invariant `repr.naxes() == mapper.naxes()`
     pub unsafe fn from_raw_unchecked(repr: R, mapper: M) -> Self {
         Self { repr, mapper }
     }

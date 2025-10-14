@@ -13,14 +13,14 @@ pub mod cut_filter {
 
 use core::{
     borrow::Borrow,
-    ops::{Div, Mul},
+    ops::{Add, Div, Mul},
     panic,
 };
 
 use tensory_core::{
     args::LegMapArg,
     arith::{
-        CommutativeScalarDivContext, CommutativeScalarMulContext, ConjugationContext, MulRuntime,
+        AddCtxImpl, CommutativeScalarDivContext, CommutativeScalarMulContext, ConjCtx, MulRuntime,
     },
     mapper::{AxisMapper, BuildableMapper, ConnectAxisOrigin, GroupedAxes},
     repr::{AsViewMutRepr, AsViewRepr},
@@ -29,7 +29,7 @@ use tensory_core::{
 };
 
 use alloc::vec::Vec;
-use ndarray::{ArrayBase, ArrayD, ArrayViewD, ArrayViewMutD, IxDyn, OwnedRepr, ScalarOperand};
+use ndarray::{ArrayBase, ArrayD, ArrayViewD, ArrayViewMutD, IxDyn, OwnedRepr, ScalarOperand, Zip};
 use ndarray_linalg::{Lapack, Scalar, from_diag, random};
 use num_traits::{ConstZero, Zero};
 use tensory_core::{arith::MulCtxImpl, repr::TensorRepr};
@@ -70,9 +70,9 @@ impl<E> NdDenseRepr<E> {
             data: ArrayD::zeros(sizes),
         }
     }
-    fn map<E2, F: FnMut(&E) -> E2>(&self, mut f: F) -> NdDenseRepr<E2> {
+    fn map<E2, F: FnMut(&E) -> E2>(&self, f: F) -> NdDenseRepr<E2> {
         NdDenseRepr {
-            data: self.data.map(|e| f(e)),
+            data: self.data.map(f),
         }
     }
 }
@@ -95,17 +95,17 @@ unsafe impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseRepr<E> {
 }
 
 unsafe impl<E> TensorRepr for NdDenseRepr<E> {
-    fn dim(&self) -> usize {
+    fn naxes(&self) -> usize {
         self.data.shape().len()
     }
 }
 unsafe impl<E> TensorRepr for NdDenseViewRepr<'_, E> {
-    fn dim(&self) -> usize {
+    fn naxes(&self) -> usize {
         self.data.shape().len()
     }
 }
 unsafe impl<E> TensorRepr for NdDenseViewMutRepr<'_, E> {
-    fn dim(&self) -> usize {
+    fn naxes(&self) -> usize {
         self.data.shape().len()
     }
 }
@@ -161,6 +161,37 @@ unsafe impl<E: ScalarOperand + Div<Output = E> + Clone>
 }
 
 //struct NdDenseContext;
+
+unsafe impl<'l, 'r, E> AddCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
+where
+    for<'a> &'a E: Add<&'a E, Output = E> + Clone,
+{
+    type Res = NdDenseRepr<E>;
+    type Err = TenalgError;
+
+    unsafe fn add_unchecked(
+        self,
+        lhs: NdDenseViewRepr<'l, E>,
+        rhs: NdDenseViewRepr<'r, E>,
+        axis_mapping: tensory_core::mapper::OverlayAxisMapping<2>,
+    ) -> Result<Self::Res, Self::Err> {
+        let lhs_raw = lhs.data;
+        let rhs_raw = rhs.data;
+
+        let (_, [lhs_perm, rhs_perm]) = axis_mapping.into_raw();
+
+        let lhs_raw = lhs_raw.permuted_axes(lhs_perm);
+        let rhs_raw = rhs_raw.permuted_axes(rhs_perm);
+
+        if lhs_raw.dim() == rhs_raw.dim() {
+            Ok(NdDenseRepr {
+                data: Zip::from(&lhs_raw).and(&rhs_raw).map_collect(|l, r| l + r),
+            })
+        } else {
+            Err(TenalgError::InvalidInput)
+        }
+    }
+}
 
 unsafe impl<'l, 'r, E: Lapack + Scalar + ConstZero>
     MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
@@ -320,7 +351,7 @@ impl<E> ElemGetMutReprImpl for NdDenseRepr<E> {
     }
 }
 
-unsafe impl<'a, E: Scalar> ConjugationContext<NdDenseViewRepr<'a, E>> for () {
+unsafe impl<'a, E: Scalar> ConjCtx<NdDenseViewRepr<'a, E>> for () {
     type Res = NdDenseRepr<E>;
 
     type Err = TenalgError;
@@ -331,6 +362,7 @@ unsafe impl<'a, E: Scalar> ConjugationContext<NdDenseViewRepr<'a, E>> for () {
         })
     }
 }
+
 // unsafe impl<E: Scalar> ConjCtx<NdDenseViewRepr<'_, E>> for () {
 //     type Res = NdDenseRepr<E>;
 
@@ -435,15 +467,67 @@ mod tests {
     use super::*;
 
     use tensory_basic::{
-        broker::VecBroker,
         id::{Id128, Prime},
+        mapper::VecMapper,
     };
 
     const EPS: f64 = 1e-8;
 
     type Leg = Prime<Id128>;
 
-    type Tensor = NdDenseTensor<f64, VecBroker<Leg>>;
+    type Tensor = NdDenseTensor<f64, VecMapper<Leg>>;
+
+    #[test]
+    fn tensor_add_test() -> Result<(), anyhow::Error> {
+        let a_n = 3;
+        let b_n = 4;
+        let c_n = 5;
+        let d_n = 6;
+
+        let a = Leg::new();
+        let b = Leg::new();
+        let c = Leg::new();
+        let d = Leg::new();
+
+        let ta = Tensor::random(leg![a => a_n, b => b_n, c => c_n, d => d_n]).unwrap();
+        let tb = Tensor::random(leg![b => b_n, c => c_n, d => d_n, a => a_n]).unwrap();
+
+        let nd = NdRuntime;
+
+        let alv = ta.mapper();
+        let blv = tb.mapper();
+        println!("{:?}", alv);
+        println!("{:?}", blv);
+
+        //println!("{:?}", tc.leg_alloc());
+
+        let tc = (&ta + &tb)?.with(())?;
+
+        // let (ta, _) = ta.into_raw();
+        // let (tb, _) = tb.into_raw();
+        // let (tc, _) = tc.into_raw();
+
+        //let tad = ta.data();
+        //let tbd = tb.data();
+        //let tcd = tc.data();
+        //println!("{:?} {:?} {:?}", tad.shape(), tbd.shape(), tcd.shape());
+        for ai in 0..3 {
+            for bi in 0..4 {
+                for ci in 0..5 {
+                    for di in 0..6 {
+                        let tc_e = ta.get(leg![&a=>ai, &b=>bi, &c=>ci, &d=>di])??
+                            + tb.get(leg![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
+                        let tc_r = tc.get(leg![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
+                        //tcd[[ai, bi, ci, di]];
+                        println!("{},{},{},{} : {} vs {}", ai, bi, ci, di, tc_e, tc_r);
+                        assert!(abs(tc_e - tc_r) < EPS);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn tensor_mul_test() -> Result<(), anyhow::Error> {

@@ -2,7 +2,7 @@
 
 /// Minimal interface for tensor representations.
 ///
-/// In the conceptual model, a tensor representation is a structured data object with multiple axes, each indexed from `0` up to `dim() - 1`.
+/// In the conceptual model, a tensor representation is a structured data object with multiple axes, each indexed from `0` up to `naxes() - 1`.
 ///
 /// In practice, a type implementing this trait serves as a handle for resource allocation and management.
 ///
@@ -20,7 +20,7 @@ pub unsafe trait TensorRepr: Sized {
     /// Returns the number of axes of the tensor. this number is fixed for the same object even through mutable operations.
     ///
     /// this function serves as a dynamic version of `const N:usize`.
-    fn dim(&self) -> usize;
+    fn naxes(&self) -> usize;
 }
 
 /// Interface to generate a immutable view representation of itself.

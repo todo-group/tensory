@@ -8,9 +8,6 @@ use crate::{
     tensor::Tensor,
 };
 
-/// A tensor with an associated runtime context.
-///
-/// To apply operations to `Tensor`, you need to supply context objects, which hold informations and resources required for the operation, and implement the operation procedure. While you can switch the implementations of operations by changing contexts, it is redundant in normal usage. `TensorWithRuntime` holds a tied "runtime" object, which provide context `Tensor` with such context, so that you can apply operations without supplying the context every time.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct TensorWithRuntime<R: TensorRepr, M: AxisMapper, RT> {
     tensor: Tensor<R, M>,
@@ -18,29 +15,39 @@ pub struct TensorWithRuntime<R: TensorRepr, M: AxisMapper, RT> {
 }
 
 impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
-    /// Binds the tensor with a runtime context, producing a `TensorWithRuntime`.
+    /// Binds the tensor with a runtime, producing a `TensorWithRuntime`.
     pub fn bind<RT>(self, runtime: RT) -> TensorWithRuntime<R, M, RT> {
         TensorWithRuntime::from_raw(self, runtime)
     }
 }
 impl<R: TensorRepr, M: AxisMapper, RT> TensorWithRuntime<R, M, RT> {
+    /// Creates a `TensorWithRuntime` from `Tensor` and runtime.
     pub fn from_raw(tensor: Tensor<R, M>, runtime: RT) -> Self {
         Self { tensor, runtime }
     }
+    /// Decomposes the `TensorWithRuntime` into `Tensor` and runtime.
     pub fn into_raw(self) -> (Tensor<R, M>, RT) {
         (self.tensor, self.runtime)
     }
+    /// Unbinds the tensor from its runtime, returning the underlying `Tensor`.
     pub fn unbind(self) -> Tensor<R, M> {
         self.tensor
     }
+    /// Get the immutable reference to the tensor.
     pub fn tensor(&self) -> &Tensor<R, M> {
         &self.tensor
     }
+    /// Get the mutable reference to the tensor.
     pub fn tensor_mut(&mut self) -> &mut Tensor<R, M> {
         &mut self.tensor
     }
+    /// Get the immutable reference to the runtime.
     pub fn runtime(&self) -> &RT {
         &self.runtime
+    }
+    /// Get the mutable reference to the runtime.
+    pub fn runtime_mut(&mut self) -> &mut RT {
+        &mut self.runtime
     }
 }
 

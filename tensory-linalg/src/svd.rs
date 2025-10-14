@@ -49,7 +49,7 @@ impl<C: SvdContextImpl<A>, A: TensorRepr> SvdContext<A> for C {
         a: A,
         axes_split: GroupedAxes<2>,
     ) -> Result<(Self::U, Self::S, Self::V), Self::Err> {
-        if a.dim() != axes_split.len() {
+        if a.naxes() != axes_split.len() {
             panic!("Incompatible tensor dimensions");
         }
         unsafe { self.svd_unchecked(a, axes_split) }

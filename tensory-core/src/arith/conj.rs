@@ -8,7 +8,7 @@ use crate::{
 /// Raw context of conjugation operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
-pub unsafe trait ConjugationContext<A: TensorRepr> {
+pub unsafe trait ConjCtx<A: TensorRepr> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
@@ -32,7 +32,7 @@ impl<A: TensorRepr, B: AxisMapper> TensorConj<A, B> {
     //     let (raw, legs) = a.into_raw();
     //     Self { a: raw, legs }
     // }
-    pub fn with<C: ConjugationContext<A>>(self, context: C) -> Result<Tensor<C::Res, B>, C::Err> {
+    pub fn with<C: ConjCtx<A>>(self, context: C) -> Result<Tensor<C::Res, B>, C::Err> {
         let a = self.a;
 
         let aconj = context.conjugate(a)?;

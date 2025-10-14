@@ -1,14 +1,14 @@
 use num_complex::Complex;
 use tensory_basic::{
-    broker::VecBroker,
     id::{Id128, Prime},
+    mapper::VecMapper,
 };
 use tensory_core::leg;
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 
 type Leg = Prime<Id128>;
-type Tensor = NdDenseTensor<f64, VecBroker<Leg>>;
+type Tensor = NdDenseTensor<f64, VecMapper<Leg>>;
 fn main() -> anyhow::Result<()> {
     // Example usage of the negation operation
     let t: usize = 20;
@@ -34,7 +34,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     for _renorm in 0..t {
-        std::println!("dim {}", z.repr().dim());
+        std::println!("dim {}", z.repr().naxes());
 
         let x_new = Leg::new();
         let y_new = Leg::new();
