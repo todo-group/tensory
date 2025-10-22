@@ -184,11 +184,48 @@ impl<const N: usize> GroupedAxes<N> {
 pub unsafe trait EquivGroupMapper<const N: usize, Q>: AxisMapper {
     type Grouped: GroupedMapper<N, Mapper = Self>;
     type Err;
-    fn split(self, queue: Q) -> Result<(Self::Grouped, EquivGroupedAxes<N>), Self::Err>;
+    fn equiv_split(self, queue: Q) -> Result<(Self::Grouped, EquivGroupedAxes<N>), Self::Err>;
 }
 pub struct EquivGroupedAxes<const N: usize> {
     len: usize,
     groups: [Vec<usize>; N],
+}
+impl<const N: usize> EquivGroupedAxes<N> {
+    pub unsafe fn from_raw_unchecked(len: usize, groups: [Vec<usize>; N]) -> Self {
+        Self { len, groups }
+    }
+    pub fn from_raw(len: usize, groups: [Vec<usize>; N]) -> Result<Self, (usize, [Vec<usize>; N])> {
+        let mut seen = vec![false; len];
+        for lane in 0..N {
+            for &i in groups[lane].iter() {
+                if i >= len || seen[i] {
+                    return Err((len, groups));
+                }
+                seen[i] = true;
+            }
+        }
+        for i in 0..len {
+            if !seen[i] {
+                return Err((len, groups));
+            }
+        }
+        if N > 0 {
+            let glen = groups[0].len();
+            for lane in 0..N {
+                if glen != groups[lane].len() {
+                    return Err((len, groups));
+                }
+            }
+        }
+
+        Ok(unsafe { Self::from_raw_unchecked(len, groups) })
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn into_raw(self) -> (usize, [Vec<usize>; N]) {
+        (self.len, self.groups)
+    }
 }
 
 pub unsafe trait GroupedMapper<const N: usize> {

@@ -17,8 +17,8 @@ use tensory_core::{
     args::{LegMapArg, LegSetArg},
     mapper::{
         AxisMapper, BuildableMapper, ConnectAxisOrigin, ConnectMapper, DecompConf,
-        DecompGroupedMapper, GroupMapper, GroupedAxes, GroupedMapper, OverlayAxisMapping,
-        OverlayMapper, ReplaceMapper, TranslateMapper,
+        DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, GroupMapper, GroupedAxes,
+        GroupedMapper, OverlayAxisMapping, OverlayMapper, ReplaceMapper, TranslateMapper,
     },
 };
 
@@ -203,6 +203,74 @@ where
                 second: second_ids,
             },
             unsafe { GroupedAxes::from_raw_unchecked(len, [first_idxs, second_idxs]) },
+        ))
+    }
+}
+
+#[derive(Debug)]
+pub struct EquivGroupErr;
+impl Display for EquivGroupErr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "equivalence group error")
+    }
+}
+impl Error for EquivGroupErr {}
+
+unsafe impl<'a, Id: Eq + Clone, K: Iterator<Item = (&'a Id, &'a Id)> + ExactSizeIterator>
+    EquivGroupMapper<2, LegSetArg<K>> for VecMapper<Id>
+where
+    Id: 'a,
+{
+    type Grouped = SplitBroker<Id>;
+    type Err = EquivGroupErr;
+
+    fn equiv_split(
+        self,
+        queue: LegSetArg<K>,
+    ) -> Result<(Self::Grouped, EquivGroupedAxes<2>), Self::Err> {
+        let len = self.naxes();
+
+        let leg_pairs = queue.into_raw();
+
+        if leg_pairs.len() * 2 != len {
+            return Err(EquivGroupErr);
+        }
+
+        let mut arr = self.0.into_iter().map(|x| Some(x)).collect::<Vec<_>>();
+
+        let mut first_ids = Vec::new();
+        let mut second_ids = Vec::new();
+        let mut first_idxs = Vec::new();
+        let mut second_idxs = Vec::new();
+
+        for (leg_l, leg_r) in leg_pairs.into_iter() {
+            if let Some(pos) = arr
+                .iter()
+                .position(|e| e.as_ref().map(|e| e == leg_l).unwrap_or(false))
+            {
+                let id = arr[pos].take().unwrap();
+                first_ids.push(id);
+                first_idxs.push(pos);
+            } else {
+                return Err(EquivGroupErr);
+            }
+            if let Some(pos) = arr
+                .iter()
+                .position(|e| e.as_ref().map(|e| e == leg_r).unwrap_or(false))
+            {
+                let id = arr[pos].take().unwrap();
+                second_ids.push(id);
+                second_idxs.push(pos);
+            } else {
+                return Err(EquivGroupErr);
+            }
+        }
+        Ok((
+            SplitBroker {
+                first: first_ids,
+                second: second_ids,
+            },
+            unsafe { EquivGroupedAxes::from_raw_unchecked(len, [first_idxs, second_idxs]) },
         ))
     }
 }

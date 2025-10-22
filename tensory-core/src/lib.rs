@@ -14,7 +14,7 @@ pub mod mapper;
 
 pub mod tensor;
 
-pub mod tensor_with_runtime;
+pub mod bound_tensor;
 
 // functionalitys built on core concepts
 // they are in the core crate due to one or more reason below:

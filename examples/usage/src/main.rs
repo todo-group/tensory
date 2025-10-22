@@ -9,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use rand::{SeedableRng, rngs::SmallRng};
 use tensory_basic::{
     id::{Id128, Prime},
     mapper::VecMapper,
@@ -48,16 +49,27 @@ fn main() -> anyhow::Result<()> {
     // }
 
     // allocation aware syntax
-    let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n])?;
-    let tb = Tensor::<f64>::random(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n])?;
+
+    println!("let's go");
+
+    let mut rng = SmallRng::seed_from_u64(0);
+
+    let ta = Tensor::<f64>::random_using(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
+    let tb = Tensor::<f64>::random_using(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n], &mut rng)?;
     let tc = Tensor::<f64>::zero(leg![a=>a_n, b=>b_n, e=>e_n, f=>f_n])?;
 
-    // let nd = NdRuntime;
+    println!("before mul");
 
-    // let ta = ta.bind(&nd);
-    // let tb = tb.bind(&nd);
+    let tx = (&ta * &tb)?.with(())?;
 
-    // let tx = (&ta * &tb)?;
+    println!("after mul");
+
+    let nd = NdRuntime;
+
+    let ta = ta.bind(nd);
+    let tb = tb.bind(nd);
+
+    let tx = (&ta * &tb)?;
 
     let us_leg = Leg::new();
     let vs_leg = Leg::new();
@@ -65,10 +77,13 @@ fn main() -> anyhow::Result<()> {
     let mut x = Duration::ZERO;
 
     let d = 20;
-    for t in 0..1 {
+    let turns: usize = 100;
+
+    for t in 0..turns {
         println!("t = {}", t);
 
-        let tx = Tensor::<f64>::random(leg![ b=>b_n, e=>e_n,a=>a_n, f=>f_n]).unwrap();
+        let tx =
+            Tensor::<f64>::random_using(leg![ b=>b_n, e=>e_n,a=>a_n, f=>f_n], &mut rng).unwrap();
 
         let svd = (&tx).svd(leg![&a, &b], us_leg, vs_leg)?;
 
@@ -81,7 +96,7 @@ fn main() -> anyhow::Result<()> {
         x += post.duration_since(pre);
     }
 
-    println!("{}", x.as_secs_f64() / 100.0);
+    println!("{}", x.as_secs_f64() / turns as f64);
 
     //svd(A, [a, b, c], us, sv);
 

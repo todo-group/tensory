@@ -4,6 +4,7 @@ use tensory_basic::{
     mapper::VecMapper,
 };
 use tensory_core::leg;
+use tensory_core::repr::TensorRepr;
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 
@@ -34,7 +35,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     for _renorm in 0..t {
-        std::println!("dim {}", z.repr().naxes());
+        std::println!("order {}", z.repr().naxes());
 
         let x_new = Leg::new();
         let y_new = Leg::new();

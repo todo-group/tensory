@@ -10,7 +10,7 @@ use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayD, ArrayView1, ArrayView2, CowArray, Data, Dimension,
     ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot, s,
 };
-use ndarray_linalg::{QR, SVDDCInto, SVDInto, Scalar, conjugate, svd::SVD};
+use ndarray_linalg::{EighInto, QR, QRInto, SVDDCInto, SVDInto, Scalar, UPLO, conjugate, svd::SVD};
 use num_traits::{ConstZero, clamp};
 
 type Result<T> = core::result::Result<T, TenalgError>;
@@ -304,18 +304,80 @@ where
     Ok((q, r))
 }
 
+pub fn into_qr<S: Data, D: Dimension, SQ: Data, SR: Data>(
+    x: ArrayBase<S, D>,
+    left_dim: usize,
+) -> Result<(ArrayD<SQ::Elem>, ArrayD<SR::Elem>)>
+where
+    S::Elem: Clone,
+    SQ::Elem: Clone,
+    SR::Elem: Clone,
+    for<'x> CowArray<'x, S::Elem, Ix2>: QRInto<Q = ArrayBase<SQ, Ix2>, R = ArrayBase<SR, Ix2>>,
+{
+    let x_ixs = x.shape();
+
+    if x_ixs.len() < left_dim {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+
+    let (left_ixs, right_ixs) = x_ixs.split_at(left_dim);
+
+    let left_full_ix: usize = left_ixs.iter().product();
+    let right_full_ix: usize = right_ixs.iter().product();
+
+    let x_mat = ten_to_mat(&x, [left_full_ix, right_full_ix])?;
+
+    let (q_mat, r_mat) = x_mat.qr_into()?;
+
+    let inner_ix = r_mat.shape()[0];
+
+    let q_ixs: Vec<Ix> = [left_ixs, &[inner_ix]].concat();
+    let r_ixs: Vec<Ix> = [&[inner_ix], right_ixs].concat();
+
+    let q = mat_to_ten(&q_mat, q_ixs)?.into_owned();
+    let r = mat_to_ten(&r_mat, r_ixs)?.into_owned();
+    Ok((q, r))
+}
+
+pub fn into_eigh<S: Data, D: Dimension, SE: Data>(
+    x: ArrayBase<S, D>,
+    left_dim: usize,
+) -> Result<(ArrayD<S::Elem>, ArrayBase<SE, Ix1>)>
+where
+    S::Elem: Clone,
+    for<'x> CowArray<'x, S::Elem, Ix2>: EighInto<EigVal = ArrayBase<SE, Ix1>>,
+{
+    let x_ixs = x.shape();
+    let x_dim = x_ixs.len();
+
+    if x_dim < left_dim {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+    let (left_ixs, right_ixs) = x_ixs.split_at(left_dim);
+    if left_ixs != right_ixs {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+    let full_ix: Ix = right_ixs.iter().product();
+    let x_mat = ten_to_mat(&x, [full_ix, full_ix])?;
+
+    let (eigs, u) = EighInto::eigh_into(x_mat, UPLO::Upper)?;
+    let u_ixs: Vec<Ix> = [left_ixs, &[full_ix]].concat();
+    let u = mat_to_ten(&u, u_ixs)?.into_owned();
+    Ok((u, eigs))
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
     use cut_filter::{Cutoff, MaxIx};
     //use linalg_ext::SVD;
-    use ndarray::{Array, ArrayD, Ix5, IxDyn};
-    use ndarray_linalg::{Norm, from_diag, random};
+    use ndarray::{Array, ArrayD, Ix4, Ix5, IxDyn};
+    use ndarray_linalg::{Norm, from_diag, random, random_hermite};
     use num_complex::Complex;
     use std::boxed::Box;
-    use std::println;
     use std::{error, f64::NAN};
+    use std::{println, vec};
     type Result<T> = std::result::Result<T, Box<dyn error::Error>>;
 
     #[test]
@@ -693,6 +755,48 @@ mod tests {
                 orino,
                 nodiff / orino,
                 r.shape()[0]
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn eigh_test() -> Result<()> {
+        let d_a = 10;
+        let d_b = 21;
+
+        let x: Array<f64, Ix2> = random_hermite(d_a * d_b);
+        println!("{}", x);
+
+        let x = x.into_shape_clone([d_a, d_b, d_a, d_b])?;
+        //let x = x.permuted_axes([0, 1, 3, 2]);
+        println!("{}", x);
+
+        println!("{:?}", x.shape());
+        {
+            let (u, eigs) = into_eigh(x.view(), 2)?;
+            println!("eigs: {:?}", eigs.shape());
+            println!("u: {:?}", u.shape());
+            let u_conj = u.view().permuted_axes(vec![2, 0, 1]);
+
+            println!("u: {}", u);
+            println!("u*: {}", u_conj);
+
+            let x_again = mul(&mul(&u, &from_diag(&eigs.to_vec()), 1)?, &u_conj, 1)?;
+
+            println!("{}", x_again);
+
+            let orino = x.norm();
+            let nodiff = x.norm() - x_again.norm();
+
+            let diff = x.clone() - x_again;
+            println!(
+                "[full] diff: {} or {}/{} = {}",
+                diff.norm(),
+                nodiff,
+                orino,
+                nodiff / orino,
             );
         }
 

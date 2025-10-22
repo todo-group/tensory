@@ -3,7 +3,7 @@ use alloc::vec;
 use tensory_core::{
     mapper::{AxisMapper, DecompConf, DecompError, DecompGroupedMapper, GroupMapper, GroupedAxes},
     repr::{AsViewRepr, TensorRepr},
-    tensor::Tensor,
+    tensor::{Tensor, ToTensor},
 };
 
 /// Raw context of SVD operation.
@@ -144,20 +144,26 @@ pub trait TensorSvdExt<A: TensorRepr, B: AxisMapper>: Sized {
         B::Id: Clone;
 }
 
-impl<A: TensorRepr, B: AxisMapper> TensorSvdExt<A, B> for Tensor<A, B> {
+impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
     fn svd_with_more_ids<Q>(
         self,
         queue: Q,
-        u_us_leg: B::Id,
-        s_us_leg: B::Id,
-        s_sv_leg: B::Id,
-        v_sv_leg: B::Id,
-    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
+        u_us_leg: <T::Mapper as AxisMapper>::Id,
+        s_us_leg: <T::Mapper as AxisMapper>::Id,
+        s_sv_leg: <T::Mapper as AxisMapper>::Id,
+        v_sv_leg: <T::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        TensorSvd<T::Repr, T::Mapper>,
+        DecompError<
+            <T::Mapper as GroupMapper<2, Q>>::Err,
+            <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+        >,
+    >
     where
-        B: GroupMapper<2, Q>,
-        B::Grouped: DecompGroupedMapper<2, 3>,
+        T::Mapper: GroupMapper<2, Q>,
+        <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
     {
-        let (raw, legs) = self.into_raw();
+        let (raw, legs) = self.to_tensor().into_raw();
         let (grouped, axes_split) = legs.split(queue).map_err(|e| DecompError::Split(e))?;
         let [u_legs, s_legs, v_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
@@ -180,74 +186,19 @@ impl<A: TensorRepr, B: AxisMapper> TensorSvdExt<A, B> for Tensor<A, B> {
     fn svd<Q>(
         self,
         set: Q,
-        us_leg: B::Id,
-        sv_leg: B::Id,
-    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
-    where
-        B: GroupMapper<2, Q>,
-        B::Grouped: DecompGroupedMapper<2, 3>,
-        B::Id: Clone,
-    {
-        self.svd_with_more_ids(set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
-    }
-    // pub fn svd<Set>(self, set: Set, us_leg: B::Id, sv_leg: B::Id) -> TensorSvd<Set, B>
-    // where
-    //     LA: SvdLegAlloc<Set>,
-    //     LA::Id: Clone,
-    // {
-    //     TensorSvd::new(self, set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
-    // }
-}
-
-impl<'a, A: AsViewRepr<'a>, B: AxisMapper + Clone> TensorSvdExt<A::View, B> for &'a Tensor<A, B> {
-    fn svd_with_more_ids<Q>(
-        self,
-        queue: Q,
-        u_us_leg: B::Id,
-        s_us_leg: B::Id,
-        s_sv_leg: B::Id,
-        v_sv_leg: B::Id,
+        us_leg: <T::Mapper as AxisMapper>::Id,
+        sv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorSvd<A::View, B>,
-        DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>,
+        TensorSvd<T::Repr, T::Mapper>,
+        DecompError<
+            <T::Mapper as GroupMapper<2, Q>>::Err,
+            <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+        >,
     >
     where
-        B: GroupMapper<2, Q>,
-        B::Grouped: DecompGroupedMapper<2, 3>,
-    {
-        let (raw, legs) = self.view().into_raw();
-        let (grouped, axes_split) = legs.split(queue).map_err(|e| DecompError::Split(e))?;
-        let [u_legs, s_legs, v_legs] = unsafe {
-            grouped.decomp(DecompConf::from_raw_unchecked(
-                [0, 2],
-                vec![
-                    ((0, u_us_leg), (1, s_us_leg)),
-                    ((1, s_sv_leg), (2, v_sv_leg)),
-                ],
-            ))
-        }
-        .map_err(|e| DecompError::Decomp(e))?;
-        Ok(TensorSvd {
-            a: raw,
-            u_legs,
-            s_legs,
-            v_legs,
-            axes_split,
-        })
-    }
-    fn svd<Q>(
-        self,
-        set: Q,
-        us_leg: B::Id,
-        sv_leg: B::Id,
-    ) -> Result<
-        TensorSvd<A::View, B>,
-        DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>,
-    >
-    where
-        B: GroupMapper<2, Q>,
-        B::Grouped: DecompGroupedMapper<2, 3>,
-        B::Id: Clone,
+        T::Mapper: GroupMapper<2, Q>,
+        <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        <T::Mapper as AxisMapper>::Id: Clone,
     {
         self.svd_with_more_ids(set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
     }

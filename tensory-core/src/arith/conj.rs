@@ -1,8 +1,8 @@
 use crate::{
+    bound_tensor::BoundTensor,
     mapper::AxisMapper,
     repr::{AsViewMutRepr, AsViewRepr, TensorRepr},
     tensor::Tensor,
-    tensor_with_runtime::TensorWithRuntime,
 };
 
 /// Raw context of conjugation operation.

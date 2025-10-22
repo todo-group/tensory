@@ -1,10 +1,10 @@
 use core::ops::Mul;
 
 use crate::{
+    bound_tensor::{BoundTensor, RuntimeError},
     mapper::{AxisMapper, ConnectAxisOrigin, ConnectMapper},
     repr::TensorRepr,
     tensor::{Tensor, ToTensor},
-    tensor_with_runtime::{RuntimeError, TensorWithRuntime},
 };
 
 /// Raw context of contraction operation.
@@ -104,7 +104,7 @@ impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorMul<L, R, M> {
         })
     }
 
-    pub fn with<C: MulCtx<L, R>>(self, context: C) -> Result<Tensor<C::Res, M>, C::Err> {
+    pub fn with<C: MulCtxImpl<L, R>>(self, context: C) -> Result<Tensor<C::Res, M>, C::Err> {
         //println!("lhs: {:?}, rhs: {:?}", lhs_legs, rhs_legs);
         //println!("idx_pairs: {:?}", idx_pairs);
 
@@ -149,30 +149,30 @@ impl_mul!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
 impl_mul!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 impl_mul!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 
-pub trait MulRuntime<Lhs: TensorRepr, Rhs: TensorRepr> {
+pub trait MulRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
     type Ctx: MulCtxImpl<Lhs, Rhs>;
-    fn mul_ctx(self) -> Self::Ctx;
+    fn mul_ctx(&self) -> Self::Ctx;
 }
 
 // // 9 combinations of Lhs/Rhs being owned/view/view_mut
-use crate::tensor_with_runtime::ToTensorWithRuntime;
+use crate::bound_tensor::{Runtime, ToBoundTensor};
 
 macro_rules! impl_mul_runtime {
     ($l:ty,$r:ty $(,$life:lifetime)*) => {
-        impl<$($life,)* L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>, RT> Mul<$r> for $l
+        impl<$($life,)* L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>, RT:Runtime> Mul<$r> for $l
         where
-            $l: ToTensorWithRuntime<Mapper = M, Runtime = RT>,
-            $r: ToTensorWithRuntime<Mapper = M, Runtime = RT>,
-            RT: Copy + Eq + MulRuntime<<$l as ToTensorWithRuntime>::Repr, <$r as ToTensorWithRuntime>::Repr>,
+            $l: ToBoundTensor<Mapper = M, Runtime = RT>,
+            $r: ToBoundTensor<Mapper = M, Runtime = RT>,
+            RT: MulRuntime<<$l as ToBoundTensor>::Repr, <$r as ToBoundTensor>::Repr>,
         {
             type Output = Result<
-                TensorWithRuntime<
+                BoundTensor<
                     <<RT as MulRuntime<
-                        <$l as ToTensorWithRuntime>::Repr,
-                        <$r as ToTensorWithRuntime>::Repr,
+                        <$l as ToBoundTensor>::Repr,
+                        <$r as ToBoundTensor>::Repr,
                     >>::Ctx as MulCtxImpl<
-                        <$l as ToTensorWithRuntime>::Repr,
-                        <$r as ToTensorWithRuntime>::Repr,
+                        <$l as ToBoundTensor>::Repr,
+                        <$r as ToBoundTensor>::Repr,
                     >>::Res,
                     M,
                     RT,
@@ -180,17 +180,17 @@ macro_rules! impl_mul_runtime {
                 RuntimeError<
                     <M as ConnectMapper<2>>::Err,
                     <<RT as MulRuntime<
-                        <$l as ToTensorWithRuntime>::Repr,
-                        <$r as ToTensorWithRuntime>::Repr,
+                        <$l as ToBoundTensor>::Repr,
+                        <$r as ToBoundTensor>::Repr,
                     >>::Ctx as MulCtxImpl<
-                        <$l as ToTensorWithRuntime>::Repr,
-                        <$r as ToTensorWithRuntime>::Repr,
+                        <$l as ToBoundTensor>::Repr,
+                        <$r as ToBoundTensor>::Repr,
                     >>::Err,
                 >,
             >;
             fn mul(self, rhs: $r) -> Self::Output {
-                let (lhs, lhs_rt) = self.to_tensor_with_runtime().into_raw();
-                let (rhs, rhs_rt) = rhs.to_tensor_with_runtime().into_raw();
+                let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
+                let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
 
                 if lhs_rt != rhs_rt {
                     return Err(RuntimeError::Runtime);
@@ -199,18 +199,18 @@ macro_rules! impl_mul_runtime {
                     .map_err(RuntimeError::Axis)?
                     .with(lhs_rt.mul_ctx())
                     .map_err(RuntimeError::Ctx)?;
-                Ok(TensorWithRuntime::from_raw(res, lhs_rt))
+                Ok(BoundTensor::from_raw(res, lhs_rt))
             }
         }
     };
 }
 
-impl_mul_runtime!(TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>);
-impl_mul_runtime!(&'l TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>,'l);
-impl_mul_runtime!(&'l mut TensorWithRuntime<L, M, RT>, TensorWithRuntime<R, M, RT>,'l);
-impl_mul_runtime!(TensorWithRuntime<L, M, RT>, &'r TensorWithRuntime<R, M, RT>,'r);
-impl_mul_runtime!(&'l TensorWithRuntime<L, M, RT>, &'r TensorWithRuntime<R, M, RT>,'l,'r);
-impl_mul_runtime!(&'l mut TensorWithRuntime<L, M, RT>, &'r TensorWithRuntime<R, M, RT>,'l,'r);
-impl_mul_runtime!(TensorWithRuntime<L, M, RT>, &'r mut TensorWithRuntime<R, M, RT>,'r);
-impl_mul_runtime!(&'l TensorWithRuntime<L, M, RT>, &'r mut TensorWithRuntime<R, M, RT>,'l,'r);
-impl_mul_runtime!(&'l mut TensorWithRuntime<L, M, RT>, &'r mut TensorWithRuntime<R, M, RT>,'l,'r);
+impl_mul_runtime!(BoundTensor<L, M, RT>, BoundTensor<R, M, RT>);
+impl_mul_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
+impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
+impl_mul_runtime!(BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'r);
+impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
+impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
+impl_mul_runtime!(BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'r);
+impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
+impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);

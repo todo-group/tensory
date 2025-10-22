@@ -15,6 +15,9 @@ num-traits = { workspace = true }
 tensory-core = { workspace = true }
 tensory-linalg = { workspace = true }
 
+rand = { workspace = true }
+itertools = { workspace = true }
+
 
 [dev-dependencies]
 tensory-basic = { workspace = true }

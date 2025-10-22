@@ -13,29 +13,39 @@ pub mod cut_filter {
 
 use core::{
     borrow::Borrow,
+    iter::Flatten,
     ops::{Add, Div, Mul},
     panic,
 };
 
+use rand::Rng;
 use tensory_core::{
     args::LegMapArg,
     arith::{
         AddCtxImpl, CommutativeScalarDivContext, CommutativeScalarMulContext, ConjCtx, MulRuntime,
     },
+    bound_tensor::Runtime,
     mapper::{AxisMapper, BuildableMapper, ConnectAxisOrigin, GroupedAxes},
     repr::{AsViewMutRepr, AsViewRepr},
     tensor::Tensor,
-    utils::elem_get::{ElemGetMutReprImpl, ElemGetReprImpl},
+    utils::{
+        axis_info::AxisInfoImpl,
+        elem_get::{ElemGetMutReprImpl, ElemGetReprImpl},
+    },
 };
 
 use alloc::vec::Vec;
 use ndarray::{ArrayBase, ArrayD, ArrayViewD, ArrayViewMutD, IxDyn, OwnedRepr, ScalarOperand, Zip};
-use ndarray_linalg::{Lapack, Scalar, from_diag, random};
+use ndarray_linalg::{
+    Lapack, Scalar, from_diag, random, random_hermite, random_hermite_using, random_using,
+};
 use num_traits::{ConstZero, Zero};
 use tensory_core::{arith::MulCtxImpl, repr::TensorRepr};
-use tensory_linalg::svd::SvdContextImpl;
+use tensory_linalg::{eigen::EighContextImpl, qr::QrContextImpl, svd::SvdContextImpl};
 
-use crate::tenalg::{conj, cut_filter::CutFilter, error::TenalgError, into_svd, into_svddc, mul};
+use crate::tenalg::{
+    conj, cut_filter::CutFilter, error::TenalgError, into_eigh, into_qr, into_svd, into_svddc, mul,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NdDenseRepr<E> {
@@ -61,6 +71,50 @@ impl<E> NdDenseRepr<E> {
             data: random(sizes),
         }
     }
+    fn random_using(sizes: impl Iterator<Item = usize>, rng: &mut impl Rng) -> Self
+    where
+        E: Scalar,
+    {
+        let sizes: Vec<usize> = sizes.collect();
+        Self {
+            data: random_using(sizes, rng),
+        }
+    }
+    fn random_hermite(sizes: impl Iterator<Item = usize>) -> Self
+    where
+        E: Scalar,
+    {
+        let sizes: Vec<usize> = sizes.collect();
+        let full_size = sizes.iter().product();
+        let sizes_dup = sizes
+            .iter()
+            .cloned()
+            .chain(sizes.iter().cloned())
+            .collect::<Vec<_>>();
+        Self {
+            data: random_hermite(full_size)
+                .into_shape_with_order(sizes_dup)
+                .unwrap(),
+        }
+    }
+    fn random_hermite_using(sizes: impl Iterator<Item = usize>, rng: &mut impl Rng) -> Self
+    where
+        E: Scalar,
+    {
+        let sizes: Vec<usize> = sizes.collect();
+        let full_size = sizes.iter().product();
+        let sizes_dup = sizes
+            .iter()
+            .cloned()
+            .chain(sizes.iter().cloned())
+            .collect::<Vec<_>>();
+        Self {
+            data: random_hermite_using(full_size, rng)
+                .into_shape_with_order(sizes_dup)
+                .unwrap(),
+        }
+    }
+
     fn zero(sizes: impl Iterator<Item = usize>) -> Self
     where
         E: Clone + Zero,
@@ -109,21 +163,21 @@ unsafe impl<E> TensorRepr for NdDenseViewMutRepr<'_, E> {
         self.data.shape().len()
     }
 }
-// impl<E> AxisInfoImpl for NdDenseRepr<E> {
-//     type AxisInfo = usize;
+impl<E> AxisInfoImpl for NdDenseRepr<E> {
+    type AxisInfo = usize;
 
-//     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
-//         self.data.shape()[i]
-//     }
-// }
+    unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
+        self.data.shape()[i]
+    }
+}
 
-// impl<E> AxisInfoImpl for NdDenseViewRepr<'_, E> {
-//     type AxisInfo = usize;
+impl<E> AxisInfoImpl for NdDenseViewRepr<'_, E> {
+    type AxisInfo = usize;
 
-//     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
-//         self.data.shape()[i]
-//     }
-// }
+    unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
+        self.data.shape()[i]
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NdDenseReprError;
@@ -330,6 +384,88 @@ where
     }
 }
 
+unsafe impl<'a, E: Scalar + Lapack> QrContextImpl<NdDenseViewRepr<'a, E>> for () {
+    type Q = NdDenseRepr<E>;
+    type R = NdDenseRepr<E>;
+    type Err = TenalgError;
+
+    unsafe fn qr_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        axes_split: GroupedAxes<2>,
+    ) -> Result<(Self::Q, Self::R), Self::Err> {
+        let (_, [q_set, r_set]) = axes_split.into_raw();
+        // U 0 uset
+        // S 0 1
+        // V 1 vset
+
+        let a_raw = a.data;
+
+        let q_set_len = q_set.len();
+
+        let a_idxv_ordered: Vec<usize> =
+            q_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+
+        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+
+        let (q, r) = into_qr(a_rot, q_set_len)?;
+
+        let q = q.permuted_axes(
+            core::iter::once(q_set_len)
+                .chain(0..q_set_len)
+                .collect::<Vec<_>>(),
+        );
+
+        Ok((NdDenseRepr { data: q }, NdDenseRepr { data: r }))
+    }
+}
+
+unsafe impl<'a, E: Scalar + Lapack> EighContextImpl<NdDenseViewRepr<'a, E>> for () {
+    type VC = NdDenseRepr<E>;
+    type D = NdDenseRepr<E::Real>;
+    type V = NdDenseRepr<E>;
+
+    type Err = TenalgError;
+
+    unsafe fn eigh_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        axes_split: tensory_core::mapper::EquivGroupedAxes<2>,
+    ) -> Result<(Self::VC, Self::D, Self::V), Self::Err> {
+        let (_, [l_set, r_set]) = axes_split.into_raw();
+        // VC 0 uset
+        // D  0 1
+        // V  1 vset
+
+        let a_raw = a.data;
+
+        let l_set_len = l_set.len();
+
+        let a_idxv_ordered: Vec<usize> =
+            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+
+        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+
+        let (vc, d) = into_eigh(a_rot, l_set_len)?;
+
+        let d_ten = from_diag(&d.to_vec()).into_dimensionality::<IxDyn>()?;
+
+        let vc = vc.permuted_axes(
+            core::iter::once(l_set_len)
+                .chain(0..l_set_len)
+                .collect::<Vec<_>>(),
+        );
+
+        let v = vc.map(|e| e.conj());
+
+        Ok((
+            NdDenseRepr { data: vc },
+            NdDenseRepr { data: d_ten },
+            NdDenseRepr { data: v },
+        ))
+    }
+}
+
 impl<E> ElemGetReprImpl for NdDenseRepr<E> {
     type Index = usize;
     type E = E;
@@ -385,63 +521,144 @@ unsafe impl<'a, E: Scalar> ConjCtx<NdDenseViewRepr<'a, E>> for () {
 
 pub type NdDenseTensor<E, B> = Tensor<NdDenseRepr<E>, B>;
 
-pub trait NdDenseTensorExt<E, B: AxisMapper>: Sized {
+pub trait NdDenseTensorExt<E, M: AxisMapper>: Sized {
     fn zero<
-        K: ExactSizeIterator + Iterator<Item = B::Id>,
+        K: ExactSizeIterator + Iterator<Item = M::Id>,
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
     where
         E: Clone + Zero,
-        B: BuildableMapper<K>;
+        M: BuildableMapper<K>;
     fn random<
-        K: ExactSizeIterator + Iterator<Item = B::Id>,
+        K: ExactSizeIterator + Iterator<Item = M::Id>,
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
     where
         E: Scalar,
-        B: BuildableMapper<K>;
-    fn map<E2, F: FnMut(&E) -> E2>(&self, f: F) -> Tensor<NdDenseRepr<E2>, B>
-    where
-        B: Clone;
-}
-impl<E, B: AxisMapper> NdDenseTensorExt<E, B> for NdDenseTensor<E, B> {
-    fn zero<
-        K: ExactSizeIterator + Iterator<Item = B::Id>,
+        M: BuildableMapper<K>;
+    fn random_using<
+        K: ExactSizeIterator + Iterator<Item = M::Id>,
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
+        rng: &mut impl Rng,
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
+    where
+        E: Scalar,
+        M: BuildableMapper<K>;
+
+    fn random_hermite<
+        K: ExactSizeIterator + Iterator<Item = (M::Id, M::Id)>,
+        V: ExactSizeIterator + Iterator<Item = usize>,
+    >(
+        map: LegMapArg<K, V>,
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
+    where
+        E: Scalar,
+        M: BuildableMapper<K>;
+    fn random_hermite_using<
+        K: ExactSizeIterator + Iterator<Item = (M::Id, M::Id)>,
+        V: ExactSizeIterator + Iterator<Item = usize>,
+    >(
+        map: LegMapArg<K, V>,
+        rng: &mut impl Rng,
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
+    where
+        E: Scalar,
+        M: BuildableMapper<K>;
+
+    fn map<E2, F: FnMut(&E) -> E2>(&self, f: F) -> Tensor<NdDenseRepr<E2>, M>
+    where
+        M: Clone;
+}
+impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
+    fn zero<
+        K: ExactSizeIterator + Iterator<Item = M::Id>,
+        V: ExactSizeIterator + Iterator<Item = usize>,
+    >(
+        map: LegMapArg<K, V>,
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
     where
         E: Clone + Zero,
-        B: BuildableMapper<K>,
+        M: BuildableMapper<K>,
     {
         let (k, v) = map.into_raw();
 
-        let broker = B::build(k)?;
+        let mapper = M::build(k)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::zero(v), broker) })
+        Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::zero(v), mapper) })
     }
     fn random<
-        K: ExactSizeIterator + Iterator<Item = B::Id>,
+        K: ExactSizeIterator + Iterator<Item = M::Id>,
         V: ExactSizeIterator + Iterator<Item = usize>,
     >(
         map: LegMapArg<K, V>,
-    ) -> Result<Self, <B as BuildableMapper<K>>::Err>
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
     where
         E: Scalar,
-        B: BuildableMapper<K>,
+        M: BuildableMapper<K>,
     {
         let (k, v) = map.into_raw();
-        let broker = B::build(k)?;
+        let broker = M::build(k)?;
         Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::random(v), broker) })
     }
-    fn map<E2, F: FnMut(&E) -> E2>(&self, mut f: F) -> Tensor<NdDenseRepr<E2>, B>
+    fn random_using<
+        K: ExactSizeIterator + Iterator<Item = M::Id>,
+        V: ExactSizeIterator + Iterator<Item = usize>,
+    >(
+        map: LegMapArg<K, V>,
+        rng: &mut impl Rng,
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
     where
-        B: Clone,
+        E: Scalar,
+        M: BuildableMapper<K>,
+    {
+        let (k, v) = map.into_raw();
+        let broker = M::build(k)?;
+        Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::random_using(v, rng), broker) })
+    }
+
+    fn random_hermite<
+        K: ExactSizeIterator + Iterator<Item = (M::Id, M::Id)>,
+        V: ExactSizeIterator + Iterator<Item = usize>,
+    >(
+        map: LegMapArg<K, V>,
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
+    where
+        E: Scalar,
+        M: BuildableMapper<K>,
+    {
+        let (k, v) = map.into_raw();
+        let broker = M::build(k)?;
+        Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::random_hermite(v), broker) })
+    }
+    fn random_hermite_using<
+        K: ExactSizeIterator + Iterator<Item = (M::Id, M::Id)>,
+        V: ExactSizeIterator + Iterator<Item = usize>,
+    >(
+        map: LegMapArg<K, V>,
+        rng: &mut impl Rng,
+    ) -> Result<Self, <M as BuildableMapper<K>>::Err>
+    where
+        E: Scalar,
+        M: BuildableMapper<K>,
+    {
+        let (k, v) = map.into_raw();
+        let broker = M::build(k)?;
+        Ok(
+            unsafe {
+                Tensor::from_raw_unchecked(NdDenseRepr::random_hermite_using(v, rng), broker)
+            },
+        )
+    }
+
+    fn map<E2, F: FnMut(&E) -> E2>(&self, mut f: F) -> Tensor<NdDenseRepr<E2>, M>
+    where
+        M: Clone,
     {
         unsafe { Tensor::from_raw_unchecked(self.repr().map(&mut f), self.mapper().clone()) }
     }
@@ -449,20 +666,22 @@ impl<E, B: AxisMapper> NdDenseTensorExt<E, B> for NdDenseTensor<E, B> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NdRuntime;
+unsafe impl Runtime for NdRuntime {}
+
 impl<'l, 'r, E: Scalar + Lapack + ConstZero>
-    MulRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for &NdRuntime
+    MulRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for NdRuntime
 {
     type Ctx = ();
-    fn mul_ctx(self) -> Self::Ctx {}
+    fn mul_ctx(&self) -> Self::Ctx {}
 }
 
 #[cfg(test)]
 mod tests {
-    use std::println;
+    use std::{println, vec};
 
     use num_traits::abs;
     use tensory_core::leg;
-    use tensory_linalg::svd::TensorSvdExt;
+    use tensory_linalg::{eigen::TensorEighExt, qr::TensorQrExt, svd::TensorSvdExt};
 
     use super::*;
 
@@ -491,8 +710,6 @@ mod tests {
 
         let ta = Tensor::random(leg![a => a_n, b => b_n, c => c_n, d => d_n]).unwrap();
         let tb = Tensor::random(leg![b => b_n, c => c_n, d => d_n, a => a_n]).unwrap();
-
-        let nd = NdRuntime;
 
         let alv = ta.mapper();
         let blv = tb.mapper();
@@ -555,8 +772,8 @@ mod tests {
         println!("{:?}", alv);
         println!("{:?}", blv);
 
-        let ta = ta.bind(&nd);
-        let tb = tb.bind(&nd);
+        let ta = ta.bind(nd);
+        let tb = tb.bind(nd);
 
         //println!("{:?}", tc.leg_alloc());
 
@@ -684,6 +901,171 @@ mod tests {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn tensor_qr_test() -> anyhow::Result<()> {
+        let a = Leg::new();
+        let b = Leg::new();
+        let c = Leg::new();
+        let d = Leg::new();
+        let a_n = 10;
+        let b_n = 15;
+        let c_n = 20;
+        let d_n = 25;
+
+        let t = Tensor::random(leg![a=>a_n, c=>c_n, d=>d_n, b=>b_n]).unwrap();
+
+        let qr_leg = Leg::new();
+
+        let (q, r) = (&t).qr(leg![&a, &b], qr_leg)?.with(())?;
+
+        //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
+
+        println!("{:?}\n{:?}\n{:?}\n{:?}\n{:?}\n", a, b, c, d, qr_leg);
+
+        println!("{:?}\n{:?}\n", q.mapper(), r.mapper());
+
+        println!("{:?} {:?}", q.repr().data.shape(), r.repr().data.shape());
+
+        let qr = (&q * &r)?.with(())?;
+
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                for ci in 0..c_n {
+                    for di in 0..d_n {
+                        assert!(
+                            (t.get(leg![&a=>ai,&b=>bi,&c=>ci,&d=>di])??
+                                - qr.get(leg![&a=>ai,&b=>bi,&c=>ci,&d=>di])??)
+                            .abs()
+                                < EPS
+                        );
+                    }
+                }
+            }
+        }
+
+        // println!("ut");
+        let qt = q.view();
+
+        let ap = a.prime();
+        let bp = b.prime();
+
+        println!("{:?} {:?} {:?}:  {:?}", a, b, qr_leg, qt.mapper());
+
+        let qt = qt.replace_leg(&a, a.prime()).unwrap();
+        let qt = qt.replace_leg(&b, b.prime()).unwrap();
+        println!("{:?}", qt.mapper());
+        let qqt = (&q * qt)?.with(())?;
+        println!("{:?}", qqt.mapper());
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                for api in 0..a_n {
+                    for bpi in 0..b_n {
+                        let re = *qqt.get(leg![&a=>ai,&b=>bi,&ap=>api,&bp=>bpi])??;
+                        if ai == api && bi == bpi {
+                            assert!((re - 1.).abs() < EPS);
+                        } else {
+                            assert!(re.abs() < EPS);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn tensor_eigh_test() -> anyhow::Result<()> {
+        let a = Leg::new();
+        let b = Leg::new();
+        //let c = Leg::new();
+        let a_n = 10;
+        let b_n = 15;
+        //let c_n = 20;
+
+        let t = Tensor::from_raw(
+            NdDenseRepr {
+                data: ndarray_linalg::random_hermite(a_n * b_n)
+                    .into_shape_with_order(vec![a_n, b_n, a_n, b_n])?,
+            },
+            VecMapper::build([a, b, a.prime(), b.prime()].into_iter())?,
+        )
+        .unwrap();
+
+        let vcd = Leg::new();
+        let dv = Leg::new();
+
+        let (vc, d, v) = t
+            .view()
+            .eigh(leg![(&a, &a.prime()), (&b, &b.prime())], vcd, dv)?
+            .with(())?;
+
+        //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
+
+        println!("{:?}\n{:?}\n{:?}\n{:?}\n", a, b, vcd, dv);
+
+        println!("{:?}\n{:?}\n{:?}\n", vc.mapper(), d.mapper(), v.mapper());
+
+        println!(
+            "{:?} {:?} {:?}",
+            vc.repr().data.shape(),
+            d.repr().data.shape(),
+            v.repr().data.shape()
+        );
+
+        let vcd_tmp = (&vc * &d)?.with(())?;
+
+        println!("{:?} {:?}", vcd_tmp.mapper(), v.repr().data.shape());
+
+        let usv = (vcd_tmp.view() * v.view())?.with(())?;
+
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                for api in 0..a_n {
+                    for bpi in 0..b_n {
+                        assert!(
+                            (t.get(leg![&a=>ai,&b=>bi,&a.prime()=>api,&b.prime()=>bpi])??
+                                - usv
+                                    .get(leg![&a=>ai,&b=>bi,&a.prime()=>api,&b.prime()=>bpi])??)
+                            .abs()
+                                < EPS
+                        );
+                    }
+                }
+            }
+        }
+
+        // // println!("ut");
+        // let ut = u.view();
+
+        // let ap = a.prime();
+        // let bp = b.prime();
+
+        // println!("{:?} {:?} {:?}:  {:?}", a, b, us, ut.mapper());
+
+        // let ut = ut.replace_leg(&a, a.prime()).unwrap();
+        // let ut = ut.replace_leg(&b, b.prime()).unwrap();
+        // println!("{:?}", ut.mapper());
+        // let uut = (&u * ut)?.with(())?;
+        // println!("{:?}", uut.mapper());
+        // for ai in 0..a_n {
+        //     for bi in 0..b_n {
+        //         for api in 0..a_n {
+        //             for bpi in 0..b_n {
+        //                 let re = *uut.get(leg![&a=>ai,&b=>bi,&ap=>api,&bp=>bpi])??;
+        //                 if ai == api && bi == bpi {
+        //                     assert!((re - 1.).abs() < EPS);
+        //                 } else {
+        //                     assert!(re.abs() < EPS);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         Ok(())
     }
