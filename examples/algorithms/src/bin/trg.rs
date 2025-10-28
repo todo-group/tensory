@@ -44,17 +44,7 @@ fn main() -> anyhow::Result<()> {
 
         let (u, s, v) = (z
             .view()
-            .replace_leg(&x, x.prime_by(2))
-            .unwrap()
-            .replace_leg(&y, y.prime_by(2))
-            .unwrap()
-            .replace_leg(&x.prime(), x)
-            .unwrap()
-            .replace_leg(&y.prime(), y)
-            .unwrap()
-            .replace_leg(&x.prime_by(2), x.prime())
-            .unwrap()
-            .replace_leg(&y.prime_by(2), y.prime())
+            .replace_leg(leg![&x => x.prime(),&y => y.prime(), &x.prime() => x, &y.prime() => y])
             .unwrap())
         .svd_with_more_ids(leg![&x, &y], x_new, x_new.prime(), dum, dum)?
         .with((MaxIx(d),))?;

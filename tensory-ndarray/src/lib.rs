@@ -882,8 +882,9 @@ mod tests {
 
         println!("{:?} {:?} {:?}:  {:?}", a, b, us, ut.mapper());
 
-        let ut = ut.replace_leg(&a, a.prime()).unwrap();
-        let ut = ut.replace_leg(&b, b.prime()).unwrap();
+        let ut = ut
+            .replace_leg(leg![&a=> a.prime(), &b=> b.prime()])
+            .unwrap();
         println!("{:?}", ut.mapper());
         let uut = (&u * ut)?.with(())?;
         println!("{:?}", uut.mapper());
@@ -955,8 +956,9 @@ mod tests {
 
         println!("{:?} {:?} {:?}:  {:?}", a, b, qr_leg, qt.mapper());
 
-        let qt = qt.replace_leg(&a, a.prime()).unwrap();
-        let qt = qt.replace_leg(&b, b.prime()).unwrap();
+        let qt = qt
+            .replace_leg(leg![&a=> a.prime(), &b=> b.prime()])
+            .unwrap();
         println!("{:?}", qt.mapper());
         let qqt = (&q * qt)?.with(())?;
         println!("{:?}", qqt.mapper());

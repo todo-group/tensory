@@ -298,7 +298,7 @@ pub enum DecompError<SE, DE> {
     Decomp(DE),
 }
 
-pub trait ReplaceMapper: AxisMapper {
+pub trait ReplaceMapper<Q>: AxisMapper {
     type Err;
-    fn replace(self, old_leg: &Self::Id, new_leg: Self::Id) -> Result<Self, Self::Err>;
+    fn replace(self, query: Q) -> Result<Self, Self::Err>;
 }

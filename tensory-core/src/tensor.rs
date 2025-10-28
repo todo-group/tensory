@@ -107,11 +107,14 @@ impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
     }
 }
 
-impl<R: TensorRepr, M: ReplaceMapper> Tensor<R, M> {
+impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
     /// Replace a ID of a leg of the tensor.
-    pub fn replace_leg(self, old_leg: &M::Id, new_leg: M::Id) -> Result<Self, M::Err> {
+    pub fn replace_leg<Q>(self, query: Q) -> Result<Self, M::Err>
+    where
+        M: ReplaceMapper<Q>,
+    {
         let (repr, mapper) = self.into_raw();
-        let mapper = mapper.replace(old_leg, new_leg)?;
+        let mapper = mapper.replace(query)?;
         Ok(unsafe { Self::from_raw_unchecked(repr, mapper) })
     }
 }

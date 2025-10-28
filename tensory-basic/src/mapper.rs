@@ -305,17 +305,32 @@ unsafe impl<const M: usize, Id: Eq + Clone> DecompGroupedMapper<2, M> for SplitB
     }
 }
 
-impl<Id: Eq + Clone> ReplaceMapper for VecMapper<Id> {
-    type Err = Id;
-    fn replace(self, old_leg: &Self::Id, new_leg: Self::Id) -> Result<Self, Self::Err> {
-        let mut v = self.0;
-        if !v.iter().any(|e| e == &new_leg)
-            && let Some(o) = v.iter_mut().find(|e| *e == old_leg)
-        {
-            *o = new_leg;
-            return Ok(unsafe { Self::from_raw_unchecked(v) });
+#[derive(Debug, Error)]
+#[error("replace error")]
+pub struct ReplaceErr;
+
+impl<
+    'a,
+    Id: Eq + Clone + 'a,
+    K: Iterator<Item = &'a Id> + ExactSizeIterator,
+    V: Iterator<Item = Id> + ExactSizeIterator,
+> ReplaceMapper<LegMapArg<K, V>> for VecMapper<Id>
+{
+    type Err = ReplaceErr;
+    fn replace(self, queue: LegMapArg<K, V>) -> Result<Self, Self::Err> {
+        let vec = self.0;
+        let (old_legs, new_legs) = queue.into_raw();
+        let mut rep_idx = old_legs
+            .map(|old| vec.iter().position(|e| e == old))
+            .collect::<Option<Vec<_>>>();
+
+        let rep_idx = rep_idx.ok_or(ReplaceErr)?;
+        let mut vec = vec;
+        for (pos, new_leg) in rep_idx.into_iter().zip(new_legs) {
+            vec[pos] = new_leg;
         }
-        Err(new_leg)
+
+        Self::from_raw(vec).map_err(|_| ReplaceErr)
     }
 }
 
