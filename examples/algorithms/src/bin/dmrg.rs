@@ -52,11 +52,11 @@ fn main() -> anyhow::Result<()> {
                         * &(&psi[j])
                             .conj()
                             .with(())?
-                            .replace_leg(&phys[j], phys[j].prime())
-                            .unwrap()
-                            .replace_leg(&psi_virt[j], psi_virt[j].prime())
-                            .unwrap()
-                            .replace_leg(&psi_virt[j + 1], psi_virt[j + 1].prime())
+                            .replace_leg(leg![
+                                &phys[j]=> phys[j].prime(),
+                                &psi_virt[j]=> psi_virt[j].prime(),
+                                &psi_virt[j + 1]=> psi_virt[j + 1].prime()
+                            ])
                             .unwrap())?
                         .with(())?;
                 }
@@ -73,11 +73,11 @@ fn main() -> anyhow::Result<()> {
                     * &(&psi[j])
                         .conj()
                         .with(())?
-                        .replace_leg(&phys[j], phys[j].prime())
-                        .unwrap()
-                        .replace_leg(&psi_virt[j], psi_virt[j].prime())
-                        .unwrap()
-                        .replace_leg(&psi_virt[j + 1], psi_virt[j + 1].prime())
+                        .replace_leg(leg![
+                            &phys[j]=> phys[j].prime(),
+                            &psi_virt[j]=> psi_virt[j].prime(),
+                            &psi_virt[j + 1]=> psi_virt[j + 1].prime()
+                        ])
                         .unwrap())?
                     .with(())?;
             }
