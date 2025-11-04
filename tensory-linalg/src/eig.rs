@@ -6,13 +6,13 @@ use tensory_core::{
         EquivGroupedAxes, GroupMapper, GroupedAxes,
     },
     repr::TensorRepr,
-    tensor::{Tensor, ToTensor},
+    tensor::{Tensor, TensorTask, ToTensor},
 };
 
 /// Raw context of SVD operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the list of `SvdAxisProvenance` is valid for the given tensor.
-pub unsafe trait EighContextImpl<A: TensorRepr> {
+pub unsafe trait EigContextImpl<A: TensorRepr> {
     /// The type of the result tensor representation corresponding VC.
     type VC: TensorRepr; // axis order: a, <from A for VC>
     /// The type of the result tensor representation corresponding D.
@@ -29,7 +29,7 @@ pub unsafe trait EighContextImpl<A: TensorRepr> {
     /// the user must ensure that the axes are valid for the given tensor.
     ///
     /// the implementor must ensure the list of `SvdAxisProvenance` is valid for the given tensor.
-    unsafe fn eigh_unchecked(
+    unsafe fn eig_unchecked(
         self,
         a: A,
         axes_split: EquivGroupedAxes<2>,
@@ -39,15 +39,15 @@ pub unsafe trait EighContextImpl<A: TensorRepr> {
 /// Safe version if SvdContextImpl.
 ///
 /// The blanket implementation checks both input and output.
-pub trait EighContext<A: TensorRepr>: EighContextImpl<A> {
-    fn eigh(
+pub trait EigContext<A: TensorRepr>: EigContextImpl<A> {
+    fn eig(
         self,
         a: A,
         axes_split: EquivGroupedAxes<2>,
     ) -> Result<(Self::VC, Self::D, Self::V), Self::Err>;
 }
-impl<C: EighContextImpl<A>, A: TensorRepr> EighContext<A> for C {
-    fn eigh(
+impl<C: EigContextImpl<A>, A: TensorRepr> EigContext<A> for C {
+    fn eig(
         self,
         a: A,
         axes_split: EquivGroupedAxes<2>,
@@ -55,11 +55,11 @@ impl<C: EighContextImpl<A>, A: TensorRepr> EighContext<A> for C {
         if a.naxes() != axes_split.len() {
             panic!("Incompatible tensor dimensions");
         }
-        unsafe { self.eigh_unchecked(a, axes_split) }
+        unsafe { self.eig_unchecked(a, axes_split) }
     }
 }
 
-pub struct TensorEigh<A: TensorRepr, B: AxisMapper> {
+pub struct TensorEig<A: TensorRepr, B: AxisMapper> {
     a: A,
     vc_legs: B,
     d_legs: B,
@@ -87,33 +87,34 @@ pub struct TensorEigh<A: TensorRepr, B: AxisMapper> {
 //         Self: Sized;
 // }
 
-impl<A: TensorRepr, M: AxisMapper> TensorEigh<A, M> {
-    // pub fn new<Q>(
-    //     a: Tensor<A, B>,
-    //     queue: Q,
-    //     s_us_leg: B::Id,
-    //     s_sv_leg: B::Id,
-    //     v_sv_leg: B::Id,
-    // ) -> Self {
-    //     let (raw, legs) = a.into_raw();
+// impl<A: TensorRepr, M: AxisMapper> TensorEig<A, M> {
+//     // pub fn new<Q>(
+//     //     a: Tensor<A, B>,
+//     //     queue: Q,
+//     //     s_us_leg: B::Id,
+//     //     s_sv_leg: B::Id,
+//     //     v_sv_leg: B::Id,
+//     // ) -> Self {
+//     //     let (raw, legs) = a.into_raw();
 
-    //     let (intermediate, u_axes) =
-    //         LA::extract(legs, u_legs, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg);
+//     //     let (intermediate, u_axes) =
+//     //         LA::extract(legs, u_legs, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg);
 
-    //     Self {
-    //         a: raw,
-    //         intermediate,
-    //         u_axes: u_axes,
-    //     }
-    // }
-    pub fn with<C: EighContext<A>>(
-        self,
-        context: C,
-    ) -> Result<(Tensor<C::VC, M>, Tensor<C::D, M>, Tensor<C::V, M>), C::Err> {
+//     //     Self {
+//     //         a: raw,
+//     //         intermediate,
+//     //         u_axes: u_axes,
+//     //     }
+//     // }
+// }
+impl<A: TensorRepr, M: AxisMapper, C: EigContext<A>> TensorTask<C> for TensorEig<A, M> {
+    type Output = Result<(Tensor<C::VC, M>, Tensor<C::D, M>, Tensor<C::V, M>), C::Err>;
+
+    fn with(self, ctx: C) -> Self::Output {
         let a = self.a;
         let axes_split = self.axes_split;
 
-        let (u, s, v) = unsafe { context.eigh_unchecked(a, axes_split) }?;
+        let (u, s, v) = unsafe { ctx.eig_unchecked(a, axes_split) }?;
 
         Ok((
             unsafe { Tensor::from_raw_unchecked(u, self.vc_legs) },
@@ -123,32 +124,32 @@ impl<A: TensorRepr, M: AxisMapper> TensorEigh<A, M> {
     }
 }
 
-pub trait TensorEighExt<A: TensorRepr, B: AxisMapper>: Sized {
-    fn eigh_with_more_ids<Q>(
+pub trait TensorEigExt<A: TensorRepr, B: AxisMapper>: Sized {
+    fn eig_with_more_ids<Q>(
         self,
         set: Q,
         vc_vcd_leg: B::Id,
         d_vcd_leg: B::Id,
         d_dv_leg: B::Id,
         v_dv_leg: B::Id,
-    ) -> Result<TensorEigh<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
+    ) -> Result<TensorEig<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
     where
         B: EquivGroupMapper<2, Q>,
         B::Grouped: DecompGroupedMapper<2, 3>;
-    fn eigh<Q>(
+    fn eig<Q>(
         self,
         set: Q,
         vcd_leg: B::Id,
         dv_leg: B::Id,
-    ) -> Result<TensorEigh<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
+    ) -> Result<TensorEig<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
     where
         B: EquivGroupMapper<2, Q>,
         B::Grouped: DecompGroupedMapper<2, 3>,
         B::Id: Clone;
 }
 
-impl<T: ToTensor> TensorEighExt<T::Repr, T::Mapper> for T {
-    fn eigh_with_more_ids<Q>(
+impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
+    fn eig_with_more_ids<Q>(
         self,
         queue: Q,
         vc_vcd_leg: <T::Mapper as AxisMapper>::Id,
@@ -156,7 +157,7 @@ impl<T: ToTensor> TensorEighExt<T::Repr, T::Mapper> for T {
         d_dv_leg: <T::Mapper as AxisMapper>::Id,
         v_dv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorEigh<T::Repr, T::Mapper>,
+        TensorEig<T::Repr, T::Mapper>,
         DecompError<
             <T::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
@@ -178,7 +179,7 @@ impl<T: ToTensor> TensorEighExt<T::Repr, T::Mapper> for T {
             ))
         }
         .map_err(|e| DecompError::Decomp(e))?;
-        Ok(TensorEigh {
+        Ok(TensorEig {
             a: raw,
             vc_legs,
             d_legs,
@@ -186,13 +187,13 @@ impl<T: ToTensor> TensorEighExt<T::Repr, T::Mapper> for T {
             axes_split,
         })
     }
-    fn eigh<Q>(
+    fn eig<Q>(
         self,
         set: Q,
         vcd_leg: <T::Mapper as AxisMapper>::Id,
         dv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorEigh<T::Repr, T::Mapper>,
+        TensorEig<T::Repr, T::Mapper>,
         DecompError<
             <T::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
@@ -203,6 +204,6 @@ impl<T: ToTensor> TensorEighExt<T::Repr, T::Mapper> for T {
         <T::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
         <T::Mapper as AxisMapper>::Id: Clone,
     {
-        self.eigh_with_more_ids(set, vcd_leg.clone(), vcd_leg, dv_leg.clone(), dv_leg)
+        self.eig_with_more_ids(set, vcd_leg.clone(), vcd_leg, dv_leg.clone(), dv_leg)
     }
 }

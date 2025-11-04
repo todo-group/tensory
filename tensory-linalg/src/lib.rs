@@ -9,12 +9,14 @@ pub mod qr;
 
 pub mod lu;
 
-pub mod eigen;
+pub mod eig;
+
+pub mod norm;
+
+pub mod conj;
 
 // you can add your own traits as we defined!
 
-// pub unsafe etrait QrContextImpl
 // pub unsafe trait LuContextImpl
 // pub unsafe trait CholeskyContextImpl
-// pub unsafe trait EigenContextImpl
 // pub unsafe trait ExpContextImpl

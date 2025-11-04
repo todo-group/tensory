@@ -4,7 +4,7 @@ use crate::{
     bound_tensor::{BoundTensor, RuntimeError},
     mapper::{AxisMapper, ConnectAxisOrigin, ConnectMapper},
     repr::TensorRepr,
-    tensor::{Tensor, ToTensor},
+    tensor::{Tensor, TensorTask, ToTensor},
 };
 
 /// Raw context of contraction operation.
@@ -103,14 +103,19 @@ impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorMul<L, R, M> {
             axis_origin,
         })
     }
+}
 
-    pub fn with<C: MulCtxImpl<L, R>>(self, context: C) -> Result<Tensor<C::Res, M>, C::Err> {
+impl<L: TensorRepr, R: TensorRepr, M: AxisMapper, C: MulCtxImpl<L, R>> TensorTask<C>
+    for TensorMul<L, R, M>
+{
+    type Output = Result<Tensor<C::Res, M>, C::Err>;
+
+    fn with(self, ctx: C) -> Self::Output {
         //println!("lhs: {:?}, rhs: {:?}", lhs_legs, rhs_legs);
         //println!("idx_pairs: {:?}", idx_pairs);
-
         Ok(unsafe {
             Tensor::from_raw_unchecked(
-                context.mul_unchecked(self.lhs, self.rhs, self.axis_origin)?,
+                ctx.mul_unchecked(self.lhs, self.rhs, self.axis_origin)?,
                 self.res_mapper,
             )
         })

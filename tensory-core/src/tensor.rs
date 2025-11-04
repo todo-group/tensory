@@ -163,6 +163,11 @@ impl<'a, T: AsViewMutRepr<'a>, M: AxisMapper + Clone> ToTensor for &'a mut Tenso
     }
 }
 
+pub trait TensorTask<C> {
+    type Output;
+    fn with(self, ctx: C) -> Self::Output;
+}
+
 // struct TensorMutRefGuard<'a, M:AxisMgr, T:TensorRepr> {
 //     raw: &'a mut T,
 //     mgr: &'a mut M,

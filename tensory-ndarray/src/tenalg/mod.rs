@@ -8,9 +8,11 @@ use cut_filter::CutFilter;
 use error::TenalgError;
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayD, ArrayView1, ArrayView2, CowArray, Data, Dimension,
-    ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot, s,
+    ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, IxDyn, ShapeError, linalg::Dot, s,
 };
-use ndarray_linalg::{EighInto, QR, QRInto, SVDDCInto, SVDInto, Scalar, UPLO, conjugate, svd::SVD};
+use ndarray_linalg::{
+    Eig, EigVals, EighInto, QR, QRInto, SVDDCInto, SVDInto, Scalar, UPLO, conjugate, svd::SVD,
+};
 use num_traits::{ConstZero, clamp};
 
 type Result<T> = core::result::Result<T, TenalgError>;
@@ -361,6 +363,35 @@ where
     let x_mat = ten_to_mat(&x, [full_ix, full_ix])?;
 
     let (eigs, u) = EighInto::eigh_into(x_mat, UPLO::Upper)?;
+    let u_ixs: Vec<Ix> = [left_ixs, &[full_ix]].concat();
+    let u = mat_to_ten(&u, u_ixs)?.into_owned();
+    Ok((u, eigs))
+}
+
+pub fn into_eig<S: Data, D: Dimension, SE: Data, SV: Data>(
+    x: ArrayBase<S, D>,
+    left_dim: usize,
+) -> Result<(ArrayD<SV::Elem>, ArrayBase<SE, Ix1>)>
+where
+    S::Elem: Clone,
+    SV::Elem: Clone,
+    for<'x> CowArray<'x, S::Elem, Ix2>:
+        Eig<EigVal = ArrayBase<SE, Ix1>, EigVec = ArrayBase<SV, Ix2>>,
+{
+    let x_ixs = x.shape();
+    let x_dim = x_ixs.len();
+
+    if x_dim < left_dim {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+    let (left_ixs, right_ixs) = x_ixs.split_at(left_dim);
+    if left_ixs != right_ixs {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+    let full_ix: Ix = right_ixs.iter().product();
+    let x_mat = ten_to_mat(&x, [full_ix, full_ix])?;
+
+    let (eigs, u) = x_mat.eig()?;
     let u_ixs: Vec<Ix> = [left_ixs, &[full_ix]].concat();
     let u = mat_to_ten(&u, u_ixs)?.into_owned();
     Ok((u, eigs))

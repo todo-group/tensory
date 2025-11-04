@@ -1,11 +1,17 @@
+use core::convert::Infallible;
 use core::ops::Div;
 
-use crate::{mapper::AxisMapper, repr::TensorRepr, tensor::Tensor};
+use crate::{
+    bound_tensor::{BoundTensor, Runtime, RuntimeError, ToBoundTensor},
+    mapper::AxisMapper,
+    repr::TensorRepr,
+    tensor::{Tensor, TensorTask},
+};
 
 /// Raw context of left scalar division operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
-pub unsafe trait LeftScalarDivContext<A: TensorRepr, E> {
+pub unsafe trait LeftScalarDivCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
@@ -19,25 +25,22 @@ pub unsafe trait LeftScalarDivContext<A: TensorRepr, E> {
     fn left_scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorLeftScalarDiv<A: TensorRepr, M: AxisMapper, E> {
+pub struct LeftScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
     res_broker: M,
 }
 
-impl<A: TensorRepr, M: AxisMapper, E> TensorLeftScalarDiv<A, M, E> {
-    // pub fn new(a: Tensor<LA, A>) -> Self {
-    //     let (raw, legs) = a.into_raw();
-    //     Self { a: raw, legs }
-    // }
-    pub fn with<C: LeftScalarDivContext<A, E>>(
-        self,
-        context: C,
-    ) -> Result<Tensor<C::Res, M>, C::Err> {
+impl<A: TensorRepr, M: AxisMapper, E, C: LeftScalarDivCtx<A, E>> TensorTask<C>
+    for LeftScalarDiv<A, M, E>
+{
+    type Output = Result<Tensor<C::Res, M>, C::Err>;
+
+    fn with(self, ctx: C) -> Self::Output {
         let a = self.a;
         let scalar = self.scalar;
 
-        let aconj = context.left_scalar_div(a, scalar)?;
+        let aconj = ctx.left_scalar_div(a, scalar)?;
 
         Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
     }
@@ -46,7 +49,7 @@ impl<A: TensorRepr, M: AxisMapper, E> TensorLeftScalarDiv<A, M, E> {
 /// Raw context of right scalar division operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
-pub unsafe trait RightScalarDivContext<A: TensorRepr, E> {
+pub unsafe trait RightScalarDivCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
@@ -66,19 +69,16 @@ pub struct TensorRightScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     res_broker: M,
 }
 
-impl<A: TensorRepr, M: AxisMapper, E> TensorRightScalarDiv<A, M, E> {
-    // pub fn new(a: Tensor<LA, A>) -> Self {
-    //     let (raw, legs) = a.into_raw();
-    //     Self { a: raw, legs }
-    // }
-    pub fn with<C: RightScalarDivContext<A, E>>(
-        self,
-        context: C,
-    ) -> Result<Tensor<C::Res, M>, C::Err> {
+impl<A: TensorRepr, M: AxisMapper, E, C: RightScalarDivCtx<A, E>> TensorTask<C>
+    for TensorRightScalarDiv<A, M, E>
+{
+    type Output = Result<Tensor<C::Res, M>, C::Err>;
+
+    fn with(self, ctx: C) -> Self::Output {
         let a = self.a;
         let scalar = self.scalar;
 
-        let aconj = context.right_scalar_div(a, scalar)?;
+        let aconj = ctx.right_scalar_div(a, scalar)?;
 
         Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
     }
@@ -87,7 +87,7 @@ impl<A: TensorRepr, M: AxisMapper, E> TensorRightScalarDiv<A, M, E> {
 /// Raw context of scalar division operation. (no left/right)
 ///
 /// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
-pub unsafe trait CommutativeScalarDivContext<A: TensorRepr, E> {
+pub unsafe trait CommutativeScalarDivCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
@@ -100,9 +100,7 @@ pub unsafe trait CommutativeScalarDivContext<A: TensorRepr, E> {
     /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
-unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivContext<A, E>> LeftScalarDivContext<A, E>
-    for C
-{
+unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivCtx<A, E>> LeftScalarDivCtx<A, E> for C {
     type Res = C::Res;
     type Err = C::Err;
 
@@ -110,9 +108,7 @@ unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivContext<A, E>> LeftScalarDi
         self.scalar_div(a, scalar)
     }
 }
-unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivContext<A, E>> RightScalarDivContext<A, E>
-    for C
-{
+unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivCtx<A, E>> RightScalarDivCtx<A, E> for C {
     type Res = C::Res;
     type Err = C::Err;
 
@@ -122,9 +118,9 @@ unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivContext<A, E>> RightScalarD
 }
 
 impl<A: TensorRepr, M: AxisMapper> Tensor<A, M> {
-    pub fn left_div<E>(self, lhs: E) -> TensorLeftScalarDiv<A, M, E> {
+    pub fn left_div<E>(self, lhs: E) -> LeftScalarDiv<A, M, E> {
         let (a, broker) = self.into_raw();
-        TensorLeftScalarDiv {
+        LeftScalarDiv {
             a,
             scalar: lhs,
             res_broker: broker,
@@ -140,31 +136,174 @@ impl<A: TensorRepr, M: AxisMapper> Tensor<A, M> {
     }
 }
 
-// trait TensorScalar {}
-// impl TensorScalar for bool {}
-// impl TensorScalar for i8 {}
-// impl TensorScalar for i16 {}
-// impl TensorScalar for i32 {}
-// impl TensorScalar for i64 {}
-// impl TensorScalar for i128 {}
-// impl TensorScalar for isize {}
-// impl TensorScalar for u8 {}
-// impl TensorScalar for u16 {}
-// impl TensorScalar for u32 {}
-// impl TensorScalar for u64 {}
-// impl TensorScalar for u128 {}
-// impl TensorScalar for usize {}
-// //impl TensorScalar for f16 {}
-// impl TensorScalar for f32 {}
-// impl TensorScalar for f64 {}
-// //impl TensorScalar for f128 {}
+use super::TensorScalar;
+use crate::tensor::ToTensor;
 
-impl<A: TensorRepr, M: AxisMapper, E> Div<(E,)> for Tensor<A, M> {
-    type Output = TensorRightScalarDiv<A, M, E>;
+macro_rules! impl_scalar_div {
+    ($a:ty $(,$life:lifetime)* ) => {
+        impl<$($life,)* A: TensorRepr, M: AxisMapper,E> Div<(E,)> for $a
+        where
+            $a: ToTensor,
+        {
+            type Output = TensorRightScalarDiv<<Self as ToTensor>::Repr, <Self as ToTensor>::Mapper, E>;
+            fn div(self, rhs: (E,)) -> Self::Output {
+                self.to_tensor().right_div(rhs.0)
+            }
+        }
+        // impl<$($life,)* A: TensorRepr, M: AxisMapper,E:TensorScalar> Div<$a> for (E,)
+        // where
+        //     $a: ToTensor,
+        // {
+        //     type Output = TensorLeftScalarDiv<<$a as ToTensor>::Repr, <$a as ToTensor>::Mapper, E>;
+        //     fn div(self, rhs: $a) -> Self::Output {
+        //         rhs.to_tensor().left_div(self.0)
+        //     }
+        // }
+        impl<$($life,)* A: TensorRepr, M: AxisMapper,E:TensorScalar> Div<E> for $a
+        where
+            $a: ToTensor,
+        {
+            type Output = TensorRightScalarDiv<<Self as ToTensor>::Repr, <Self as ToTensor>::Mapper, E>;
+            fn div(self, rhs: E) -> Self::Output {
+                self.to_tensor().right_div(rhs)
+            }
+        }
 
-    fn div(self, rhs: (E,)) -> Self::Output {
-        self.right_div(rhs.0)
-    }
+    };
 }
 
-// unfortunately we not have left_div common format
+impl_scalar_div!(Tensor<A, M>);
+impl_scalar_div!(&'a Tensor<A, M>,'a);
+impl_scalar_div!(&'a mut Tensor<A, M>,'a);
+
+pub trait LeftScalarDivRuntime<A: TensorRepr, E>: Runtime {
+    type Ctx: LeftScalarDivCtx<A, E>;
+    fn left_scalar_div_ctx(&self) -> Self::Ctx;
+}
+pub trait RightScalarDivRuntime<A: TensorRepr, E>: Runtime {
+    type Ctx: RightScalarDivCtx<A, E>;
+    fn right_scalar_div_ctx(&self) -> Self::Ctx;
+}
+
+macro_rules! impl_scalar_div_runtime {
+    ($a:ty $(,$life:lifetime)*) => {
+        impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E> Div<(E,)> for $a
+        where
+            $a: ToBoundTensor<Mapper = M, Runtime = RT>,
+            RT: RightScalarDivRuntime<<$a as ToBoundTensor>::Repr, E>,
+        {
+            type Output = Result<
+                BoundTensor<
+                    <<RT as RightScalarDivRuntime<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Ctx as RightScalarDivCtx<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Res,
+                    M,
+                    RT,
+                >,
+                RuntimeError<
+                    Infallible,
+                    <<RT as RightScalarDivRuntime<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Ctx as RightScalarDivCtx<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Err,
+                >,
+            >;
+            fn div(self, rhs: (E,)) -> Self::Output {
+                let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
+
+                let res = (lhs / rhs)
+                    .with(lhs_rt.right_scalar_div_ctx())
+                    .map_err(RuntimeError::Ctx)?;
+                Ok(BoundTensor::from_raw(res, lhs_rt))
+            }
+        }
+
+
+        // impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E> Div<$a> for (E,)
+        // where
+        //     $a: ToBoundTensor<Mapper = M, Runtime = RT>,
+        //     RT: LeftScalarDivRuntime<<$a as ToBoundTensor>::Repr, E>,
+        // {
+        //     type Output = Result<
+        //         BoundTensor<
+        //             <<RT as LeftScalarDivRuntime<
+        //                 <$a as ToBoundTensor>::Repr,
+        //                 E,
+        //             >>::Ctx as LeftScalarDivCtx<
+        //                 <$a as ToBoundTensor>::Repr,
+        //                 E,
+        //             >>::Res,
+        //             M,
+        //             RT,
+        //         >,
+        //         RuntimeError<
+        //             Infallible,
+        //             <<RT as LeftScalarDivRuntime<
+        //                 <$a as ToBoundTensor>::Repr,
+        //                 E,
+        //             >>::Ctx as LeftScalarDivCtx<
+        //                 <$a as ToBoundTensor>::Repr,
+        //                 E,
+        //             >>::Err,
+        //         >,
+        //     >;
+        //     fn div(self, rhs: $a) -> Self::Output {
+        //         let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
+
+        //         let res = (self / rhs)
+        //             .with(rhs_rt.left_scalar_div_ctx())
+        //             .map_err(RuntimeError::Ctx)?;
+        //         Ok(BoundTensor::from_raw(res, rhs_rt))
+        //     }
+        // }
+
+        impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E:TensorScalar> Div<E> for $a
+        where
+            $a: ToBoundTensor<Mapper = M, Runtime = RT>,
+            RT: RightScalarDivRuntime<<$a as ToBoundTensor>::Repr, E>,
+        {
+            type Output = Result<
+                BoundTensor<
+                    <<RT as RightScalarDivRuntime<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Ctx as RightScalarDivCtx<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Res,
+                    M,
+                    RT,
+                >,
+                RuntimeError<
+                    Infallible,
+                    <<RT as RightScalarDivRuntime<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Ctx as RightScalarDivCtx<
+                        <$a as ToBoundTensor>::Repr,
+                        E,
+                    >>::Err,
+                >,
+            >;
+            fn div(self, rhs: E) -> Self::Output {
+                let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
+
+                let res = (lhs / rhs)
+                    .with(lhs_rt.right_scalar_div_ctx())
+                    .map_err(RuntimeError::Ctx)?;
+                Ok(BoundTensor::from_raw(res, lhs_rt))
+            }
+        }
+    };
+}
+
+impl_scalar_div_runtime!(BoundTensor<A, M, RT>);
+impl_scalar_div_runtime!(&'a BoundTensor<A, M, RT>,'a);
+impl_scalar_div_runtime!(&'a mut BoundTensor<A, M, RT>,'a);

@@ -17,7 +17,7 @@ use tensory_basic::{
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
 
-use tensory_core::leg;
+use tensory_core::{leg, tensor::TensorTask};
 
 type Leg = Prime<Id128>;
 type Tensor<E> = NdDenseTensor<E, VecMapper<Leg>>;

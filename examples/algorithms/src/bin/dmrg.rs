@@ -4,8 +4,8 @@ use tensory_basic::{
     mapper::VecMapper,
 };
 //use tensory_core::tensor::TensorRepr;
-use tensory_core::{args::LegMapArg, arith::Conj, leg};
-use tensory_linalg::svd::TensorSvdExt;
+use tensory_core::{args::LegMapArg, leg, tensor::TensorTask};
+use tensory_linalg::{conj::TensorConjExt, svd::TensorSvdExt};
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 type Leg = Prime<Id128>;
 type Tensor = NdDenseTensor<Complex<f64>, VecMapper<Leg>>;

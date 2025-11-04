@@ -4,7 +4,7 @@ use crate::{
     bound_tensor::{BoundTensor, RuntimeError},
     mapper::{AxisMapper, OverlayAxisMapping, OverlayMapper},
     repr::TensorRepr,
-    tensor::Tensor,
+    tensor::{Tensor, TensorTask},
 };
 
 /// Raw context of addition operation.
@@ -97,11 +97,17 @@ impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorAdd<L, R, M> {
             axis_mapping: axis_origin,
         })
     }
+}
 
-    pub fn with<C: AddCtxImpl<L, R>>(self, context: C) -> Result<Tensor<C::Res, M>, C::Err> {
+impl<L: TensorRepr, R: TensorRepr, M: AxisMapper, C: AddCtxImpl<L, R>> TensorTask<C>
+    for TensorAdd<L, R, M>
+{
+    type Output = Result<Tensor<C::Res, M>, C::Err>;
+
+    fn with(self, ctx: C) -> Result<Tensor<C::Res, M>, C::Err> {
         Ok(unsafe {
             Tensor::from_raw_unchecked(
-                context.add_unchecked(self.lhs, self.rhs, self.axis_mapping)?,
+                ctx.add_unchecked(self.lhs, self.rhs, self.axis_mapping)?,
                 self.res_mapper,
             )
         })
@@ -112,7 +118,7 @@ impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorAdd<L, R, M> {
 
 use crate::tensor::ToTensor;
 
-macro_rules! impl_mul {
+macro_rules! impl_add {
     ($l:ty,$r:ty $(,$life:lifetime)* ) => {
         impl<$($life,)* L: TensorRepr, R: TensorRepr, M: OverlayMapper<2>> Add<$r> for $l
         where
@@ -132,15 +138,15 @@ macro_rules! impl_mul {
     };
 }
 
-impl_mul!(Tensor<L, M>, Tensor<R, M>);
-impl_mul!(&'l Tensor<L, M>, Tensor<R, M>,'l);
-impl_mul!(&'l mut Tensor<L, M>, Tensor<R, M>,'l);
-impl_mul!(Tensor<L, M>, &'r Tensor<R, M>,'r);
-impl_mul!(&'l Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
-impl_mul!(&'l mut Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
-impl_mul!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
-impl_mul!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
-impl_mul!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
+impl_add!(Tensor<L, M>, Tensor<R, M>);
+impl_add!(&'l Tensor<L, M>, Tensor<R, M>,'l);
+impl_add!(&'l mut Tensor<L, M>, Tensor<R, M>,'l);
+impl_add!(Tensor<L, M>, &'r Tensor<R, M>,'r);
+impl_add!(&'l Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
+impl_add!(&'l mut Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
+impl_add!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
+impl_add!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
+impl_add!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 
 pub trait AddRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
     type Ctx: AddCtxImpl<Lhs, Rhs>;
@@ -150,7 +156,7 @@ pub trait AddRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
 // // 9 combinations of Lhs/Rhs being owned/view/view_mut
 use crate::bound_tensor::{Runtime, ToBoundTensor};
 
-macro_rules! impl_mul_runtime {
+macro_rules! impl_add_runtime {
     ($l:ty,$r:ty $(,$life:lifetime)*) => {
         impl<$($life,)* L: TensorRepr, R: TensorRepr, M: OverlayMapper<2>, RT:Runtime> Add<$r> for $l
         where
@@ -198,12 +204,12 @@ macro_rules! impl_mul_runtime {
     };
 }
 
-impl_mul_runtime!(BoundTensor<L, M, RT>, BoundTensor<R, M, RT>);
-impl_mul_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
-impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
-impl_mul_runtime!(BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'r);
-impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
-impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
-impl_mul_runtime!(BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'r);
-impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
-impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
+impl_add_runtime!(BoundTensor<L, M, RT>, BoundTensor<R, M, RT>);
+impl_add_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
+impl_add_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
+impl_add_runtime!(BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'r);
+impl_add_runtime!(&'l BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
+impl_add_runtime!(&'l mut BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
+impl_add_runtime!(BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'r);
+impl_add_runtime!(&'l BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
+impl_add_runtime!(&'l mut BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);

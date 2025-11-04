@@ -3,7 +3,7 @@ use alloc::vec;
 use tensory_core::{
     mapper::{AxisMapper, DecompConf, DecompError, DecompGroupedMapper, GroupMapper, GroupedAxes},
     repr::{AsViewRepr, TensorRepr},
-    tensor::{Tensor, ToTensor},
+    tensor::{Tensor, TensorTask, ToTensor},
 };
 
 /// Raw context of QR operation.
@@ -53,33 +53,14 @@ pub struct TensorQr<A: TensorRepr, M: AxisMapper> {
     axes_split: GroupedAxes<2>,
 }
 
-impl<A: TensorRepr, M: AxisMapper> TensorQr<A, M> {
-    // pub fn new<Q>(
-    //     a: Tensor<A, B>,
-    //     queue: Q,
-    //     s_us_leg: B::Id,
-    //     s_sv_leg: B::Id,
-    //     v_sv_leg: B::Id,
-    // ) -> Self {
-    //     let (raw, legs) = a.into_raw();
+impl<A: TensorRepr, M: AxisMapper, C: QrContext<A>> TensorTask<C> for TensorQr<A, M> {
+    type Output = Result<(Tensor<C::Q, M>, Tensor<C::R, M>), C::Err>;
 
-    //     let (intermediate, u_axes) =
-    //         LA::extract(legs, u_legs, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg);
-
-    //     Self {
-    //         a: raw,
-    //         intermediate,
-    //         u_axes: u_axes,
-    //     }
-    // }
-    pub fn with<C: QrContext<A>>(
-        self,
-        context: C,
-    ) -> Result<(Tensor<C::Q, M>, Tensor<C::R, M>), C::Err> {
+    fn with(self, ctx: C) -> Self::Output {
         let a = self.a;
         let axes_split = self.axes_split;
 
-        let (q, r) = unsafe { context.qr_unchecked(a, axes_split) }?;
+        let (q, r) = unsafe { ctx.qr_unchecked(a, axes_split) }?;
 
         Ok((
             unsafe { Tensor::from_raw_unchecked(q, self.q_legs) },

@@ -1,8 +1,8 @@
-use crate::{
+use tensory_core::{
     bound_tensor::BoundTensor,
     mapper::AxisMapper,
     repr::{AsViewMutRepr, AsViewRepr, TensorRepr},
-    tensor::Tensor,
+    tensor::{Tensor, TensorTask, ToTensor},
 };
 
 /// Raw context of conjugation operation.
@@ -27,43 +27,27 @@ pub struct TensorConj<A: TensorRepr, B: AxisMapper> {
     res_mgr: B,
 }
 
-impl<A: TensorRepr, B: AxisMapper> TensorConj<A, B> {
-    // pub fn new(a: Tensor<LA, A>) -> Self {
-    //     let (raw, legs) = a.into_raw();
-    //     Self { a: raw, legs }
-    // }
-    pub fn with<C: ConjCtx<A>>(self, context: C) -> Result<Tensor<C::Res, B>, C::Err> {
+impl<A: TensorRepr, M: AxisMapper, C: ConjCtx<A>> TensorTask<C> for TensorConj<A, M> {
+    type Output = Result<Tensor<C::Res, M>, C::Err>;
+
+    fn with(self, ctx: C) -> Self::Output {
         let a = self.a;
 
-        let aconj = context.conjugate(a)?;
+        let aconj = ctx.conjugate(a)?;
 
         Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mgr) })
     }
 }
 
-pub trait Conj {
+pub trait TensorConjExt {
     type Output;
     fn conj(self) -> Self::Output;
 }
 
-impl<A: TensorRepr, B: AxisMapper> Conj for Tensor<A, B> {
-    type Output = TensorConj<A, B>;
+impl<T: ToTensor> TensorConjExt for T {
+    type Output = TensorConj<T::Repr, T::Mapper>;
     fn conj(self) -> Self::Output {
-        let (a, mgr) = self.into_raw();
-        TensorConj { a, res_mgr: mgr }
-    }
-}
-impl<'a, A: TensorRepr + AsViewRepr<'a>, B: AxisMapper + Clone> Conj for &'a Tensor<A, B> {
-    type Output = TensorConj<A::View, B>;
-    fn conj(self) -> TensorConj<A::View, B> {
-        let (a, mgr) = self.view().into_raw();
-        TensorConj { a, res_mgr: mgr }
-    }
-}
-impl<'a, A: TensorRepr + AsViewMutRepr<'a>, B: AxisMapper + Clone> Conj for &'a mut Tensor<A, B> {
-    type Output = TensorConj<A::ViewMut, B>;
-    fn conj(self) -> TensorConj<A::ViewMut, B> {
-        let (a, mgr) = self.view_mut().into_raw();
+        let (a, mgr) = self.to_tensor().into_raw();
         TensorConj { a, res_mgr: mgr }
     }
 }

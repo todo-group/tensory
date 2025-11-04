@@ -3,8 +3,8 @@ use tensory_basic::{
     id::{Id128, Prime},
     mapper::VecMapper,
 };
-use tensory_core::leg;
-use tensory_core::repr::TensorRepr;
+use tensory_core::{args::_from_array_pair, leg};
+use tensory_core::{repr::TensorRepr, tensor::TensorTask};
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 
@@ -68,5 +68,10 @@ fn main() -> anyhow::Result<()> {
         x = x_new;
         y = y_new;
     }
+
+    let z = (&z * &z)?.with(())?;
+
+    std::println!("Final tensor: {:?}", z[_from_array_pair([], [])]);
+
     Ok(())
 }
