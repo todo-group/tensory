@@ -10,7 +10,9 @@ use core::ops::Neg;
 
 /// Raw context of negation operation.
 ///
-/// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
 pub unsafe trait NegCtx<A: TensorRepr> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
@@ -18,16 +20,13 @@ pub unsafe trait NegCtx<A: TensorRepr> {
     type Err;
 
     /// Performs negation operation on the tensor `a`.
-    ///
-    /// # Safety
-    ///
-    /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn negate(self, a: A) -> Result<Self::Res, Self::Err>;
 }
 
+/// Intermediate task struct for negation operation.
 pub struct TensorNeg<A: TensorRepr, M: AxisMapper> {
     a: A,
-    res_broker: M,
+    res_mapper: M,
 }
 
 // pub fn new(a: Tensor<LA, A>) -> Self {
@@ -42,7 +41,7 @@ impl<A: TensorRepr, M: AxisMapper, C: NegCtx<A>> TensorTask<C> for TensorNeg<A, 
 
         let aneg = ctx.negate(a)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aneg, self.res_broker) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aneg, self.res_mapper) })
     }
 }
 
@@ -55,7 +54,7 @@ macro_rules! impl_neg {
             type Output = TensorNeg<<Self as ToTensor>::Repr, <Self as ToTensor>::Mapper>;
             fn neg(self) -> Self::Output {
                 let (a, mgr)=self.to_tensor().into_raw();
-                TensorNeg { a, res_broker: mgr }
+                TensorNeg { a, res_mapper: mgr }
             }
         }
     };
@@ -65,8 +64,11 @@ impl_neg!(Tensor<A, M>);
 impl_neg!(&'a Tensor<A, M>,'a);
 impl_neg!(&'a mut Tensor<A, M>,'a);
 
+/// Runtime trait for negation operation.
 pub trait NegRuntime<A: TensorRepr>: Runtime {
+    /// The context type.
     type Ctx: NegCtx<A>;
+    /// Returns the context.
     fn neg_ctx(&self) -> Self::Ctx;
 }
 

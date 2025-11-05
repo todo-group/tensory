@@ -15,6 +15,7 @@ pub mod norm;
 
 pub mod conj;
 
+pub mod solve_eig;
 // you can add your own traits as we defined!
 
 // pub unsafe trait LuContextImpl

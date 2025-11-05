@@ -1,15 +1,15 @@
 use alloc::vec;
 
 use tensory_core::{
-    mapper::{AxisMapper, DecompConf, DecompError, DecompGroupedMapper, GroupMapper, GroupedAxes},
-    repr::{AsViewRepr, TensorRepr},
+    mapper::{AxisMapper, DecompConf, DecompGroupedMapper, GroupMapper, GroupedAxes, SplittyError},
+    repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
 };
 
 /// Raw context of SVD operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the list of `SvdAxisProvenance` is valid for the given tensor.
-pub unsafe trait SvdContextImpl<A: TensorRepr> {
+pub unsafe trait SvdCtxImpl<A: TensorRepr> {
     /// The type of the result tensor representation corresponding U.
     type U: TensorRepr; // axis order: a, <from A for U>
     /// The type of the result tensor representation corresponding S.
@@ -36,14 +36,14 @@ pub unsafe trait SvdContextImpl<A: TensorRepr> {
 /// Safe version if SvdContextImpl.
 ///
 /// The blanket implementation checks both input and output.
-pub trait SvdContext<A: TensorRepr>: SvdContextImpl<A> {
+pub trait SvdCtx<A: TensorRepr>: SvdCtxImpl<A> {
     fn svd(
         self,
         a: A,
         axes_split: GroupedAxes<2>,
     ) -> Result<(Self::U, Self::S, Self::V), Self::Err>;
 }
-impl<C: SvdContextImpl<A>, A: TensorRepr> SvdContext<A> for C {
+impl<C: SvdCtxImpl<A>, A: TensorRepr> SvdCtx<A> for C {
     fn svd(
         self,
         a: A,
@@ -84,7 +84,7 @@ pub struct TensorSvd<A: TensorRepr, B: AxisMapper> {
 //         Self: Sized;
 // }
 
-impl<A: TensorRepr, B: AxisMapper, C: SvdContext<A>> TensorTask<C> for TensorSvd<A, B> {
+impl<A: TensorRepr, B: AxisMapper, C: SvdCtx<A>> TensorTask<C> for TensorSvd<A, B> {
     type Output = Result<(Tensor<C::U, B>, Tensor<C::S, B>, Tensor<C::V, B>), C::Err>;
 
     fn with(self, ctx: C) -> Self::Output {
@@ -101,28 +101,28 @@ impl<A: TensorRepr, B: AxisMapper, C: SvdContext<A>> TensorTask<C> for TensorSvd
     }
 }
 
-pub trait TensorSvdExt<A: TensorRepr, B: AxisMapper>: Sized {
+pub trait TensorSvdExt<A: TensorRepr, M: AxisMapper>: Sized {
     fn svd_with_more_ids<Q>(
         self,
         set: Q,
-        u_us_leg: B::Id,
-        s_us_leg: B::Id,
-        s_sv_leg: B::Id,
-        v_sv_leg: B::Id,
-    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
+        u_us_leg: M::Id,
+        s_us_leg: M::Id,
+        s_sv_leg: M::Id,
+        v_sv_leg: M::Id,
+    ) -> Result<TensorSvd<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
     where
-        B: GroupMapper<2, Q>,
-        B::Grouped: DecompGroupedMapper<2, 3>;
+        M: GroupMapper<2, Q>,
+        M::Grouped: DecompGroupedMapper<2, 3>;
     fn svd<Q>(
         self,
         set: Q,
-        us_leg: B::Id,
-        sv_leg: B::Id,
-    ) -> Result<TensorSvd<A, B>, DecompError<B::Err, <B::Grouped as DecompGroupedMapper<2, 3>>::Err>>
+        us_leg: M::Id,
+        sv_leg: M::Id,
+    ) -> Result<TensorSvd<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
     where
-        B: GroupMapper<2, Q>,
-        B::Grouped: DecompGroupedMapper<2, 3>,
-        B::Id: Clone;
+        M: GroupMapper<2, Q>,
+        M::Grouped: DecompGroupedMapper<2, 3>,
+        M::Id: Clone;
 }
 
 impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
@@ -135,7 +135,7 @@ impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
         v_sv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSvd<T::Repr, T::Mapper>,
-        DecompError<
+        SplittyError<
             <T::Mapper as GroupMapper<2, Q>>::Err,
             <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
@@ -145,7 +145,7 @@ impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
         <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.split(queue).map_err(|e| DecompError::Split(e))?;
+        let (grouped, axes_split) = legs.split(queue).map_err(SplittyError::Split)?;
         let [u_legs, s_legs, v_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 2],
@@ -155,7 +155,7 @@ impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
                 ],
             ))
         }
-        .map_err(|e| DecompError::Decomp(e))?;
+        .map_err(SplittyError::Use)?;
         Ok(TensorSvd {
             a: raw,
             u_legs,
@@ -171,7 +171,7 @@ impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
         sv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSvd<T::Repr, T::Mapper>,
-        DecompError<
+        SplittyError<
             <T::Mapper as GroupMapper<2, Q>>::Err,
             <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,

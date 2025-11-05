@@ -33,7 +33,7 @@ pub trait TensorNormExt<A: TensorRepr>: Sized {
 
 impl<T: ToTensor> TensorNormExt<T::Repr> for T {
     fn norm(self) -> TensorNorm<T::Repr> {
-        let (a, _broker) = self.to_tensor().into_raw();
+        let (a, _) = self.to_tensor().into_raw();
         TensorNorm { a }
     }
 }

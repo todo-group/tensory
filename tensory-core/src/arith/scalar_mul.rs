@@ -9,7 +9,9 @@ use crate::{
 
 /// Raw context of left scalar multiplication operation.
 ///
-/// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
 pub unsafe trait LeftScalarMulCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
@@ -17,25 +19,15 @@ pub unsafe trait LeftScalarMulCtx<A: TensorRepr, E> {
     type Err;
 
     /// Performs left scalar multiplication operation on the tensor `a`.
-    ///
-    /// # Safety
-    ///
-    /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn left_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
+/// Intermediate task struct for left scalar multiplication operation.
 pub struct TensorLeftScalarMul<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
-    res_broker: M,
+    res_mapper: M,
 }
-
-// impl<A: TensorRepr, M: AxisMapper, E> TensorLeftScalarMul<A, M, E> {
-//     // pub fn new(a: Tensor<LA, A>) -> Self {
-//     //     let (raw, legs) = a.into_raw();
-//     //     Self { a: raw, legs }
-//     // }
-// }
 
 impl<A: TensorRepr, M: AxisMapper, E, C: LeftScalarMulCtx<A, E>> TensorTask<C>
     for TensorLeftScalarMul<A, M, E>
@@ -48,13 +40,15 @@ impl<A: TensorRepr, M: AxisMapper, E, C: LeftScalarMulCtx<A, E>> TensorTask<C>
 
         let aconj = ctx.left_scalar_mul(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
     }
 }
 
 /// Raw context of right scalar multiplication operation.
 ///
-/// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
 pub unsafe trait RightScalarMulCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
@@ -62,17 +56,14 @@ pub unsafe trait RightScalarMulCtx<A: TensorRepr, E> {
     type Err;
 
     /// Performs right scalar multiplication operation on the tensor `a`.
-    ///
-    /// # Safety
-    ///
-    /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn right_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct TensorRightScalarMul<A: TensorRepr, B: AxisMapper, E> {
+/// Intermediate task struct for right scalar multiplication operation.
+pub struct TensorRightScalarMul<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
-    res_broker: B,
+    res_mapper: M,
 }
 
 // impl<A: TensorRepr, B: AxisMapper, E> TensorRightScalarMul<A, B, E> {
@@ -93,13 +84,15 @@ impl<A: TensorRepr, M: AxisMapper, E, C: RightScalarMulCtx<A, E>> TensorTask<C>
 
         let aconj = ctx.right_scalar_mul(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
     }
 }
 
 /// Raw context of scalar multiplication operation. (no left/right)
 ///
-/// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
 pub unsafe trait CommutativeScalarMulCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
@@ -107,10 +100,6 @@ pub unsafe trait CommutativeScalarMulCtx<A: TensorRepr, E> {
     type Err;
 
     /// Performs left scalar multiplication operation on the tensor `a`.
-    ///
-    /// # Safety
-    ///
-    /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 unsafe impl<A: TensorRepr, E, C: CommutativeScalarMulCtx<A, E>> LeftScalarMulCtx<A, E> for C {
@@ -130,10 +119,15 @@ unsafe impl<A: TensorRepr, E, C: CommutativeScalarMulCtx<A, E>> RightScalarMulCt
     }
 }
 
-trait TensorScalarMulExt<E> {
+/// Extension trait for left/right scalar multiplication operation on tensors.
+pub trait TensorScalarMulExt<E> {
+    /// The type of the tensor representation.
     type A: TensorRepr;
+    /// The type of the axis mapper.
     type M: AxisMapper;
+    /// Creates a left scalar multiplication task.
     fn left_mul(self, lhs: E) -> TensorLeftScalarMul<Self::A, Self::M, E>;
+    /// Creates a right scalar multiplication task.
     fn right_mul(self, rhs: E) -> TensorRightScalarMul<Self::A, Self::M, E>;
 }
 
@@ -142,19 +136,19 @@ impl<T: ToTensor, E> TensorScalarMulExt<E> for T {
     type M = T::Mapper;
 
     fn left_mul(self, lhs: E) -> TensorLeftScalarMul<Self::A, Self::M, E> {
-        let (a, broker) = self.to_tensor().into_raw();
+        let (a, mapper) = self.to_tensor().into_raw();
         TensorLeftScalarMul {
             a,
             scalar: lhs,
-            res_broker: broker,
+            res_mapper: mapper,
         }
     }
     fn right_mul(self, rhs: E) -> TensorRightScalarMul<Self::A, Self::M, E> {
-        let (a, broker) = self.to_tensor().into_raw();
+        let (a, mapper) = self.to_tensor().into_raw();
         TensorRightScalarMul {
             a,
             scalar: rhs,
-            res_broker: broker,
+            res_mapper: mapper,
         }
     }
 }
@@ -198,13 +192,40 @@ impl_scalar_mul!(Tensor<A, M>);
 impl_scalar_mul!(&'a Tensor<A, M>,'a);
 impl_scalar_mul!(&'a mut Tensor<A, M>,'a);
 
+/// Runtime trait for left scalar multiplication operation.
 pub trait LeftScalarMulRuntime<A: TensorRepr, E>: Runtime {
+    /// The context type.
     type Ctx: LeftScalarMulCtx<A, E>;
+    /// Returns the context.
     fn left_scalar_mul_ctx(&self) -> Self::Ctx;
 }
+
+/// Runtime trait for right scalar multiplication operation.
 pub trait RightScalarMulRuntime<A: TensorRepr, E>: Runtime {
+    /// The context type.
     type Ctx: RightScalarMulCtx<A, E>;
+    /// Returns the context.
     fn right_scalar_mul_ctx(&self) -> Self::Ctx;
+}
+
+/// Runtime trait for commutative scalar multiplication operation. (no left/right)
+pub trait CommutativeScalarMulRuntime<A: TensorRepr, E>: Runtime {
+    /// The context type.
+    type Ctx: CommutativeScalarMulCtx<A, E>;
+    /// Returns the context.
+    fn scalar_mul_ctx(&self) -> Self::Ctx;
+}
+impl<T: CommutativeScalarMulRuntime<A, E>, A: TensorRepr, E> LeftScalarMulRuntime<A, E> for T {
+    type Ctx = T::Ctx;
+    fn left_scalar_mul_ctx(&self) -> Self::Ctx {
+        self.scalar_mul_ctx()
+    }
+}
+impl<T: CommutativeScalarMulRuntime<A, E>, A: TensorRepr, E> RightScalarMulRuntime<A, E> for T {
+    type Ctx = T::Ctx;
+    fn right_scalar_mul_ctx(&self) -> Self::Ctx {
+        self.scalar_mul_ctx()
+    }
 }
 
 macro_rules! impl_scalar_mul_runtime {

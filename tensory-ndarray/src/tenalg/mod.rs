@@ -8,10 +8,10 @@ use cut_filter::CutFilter;
 use error::TenalgError;
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayD, ArrayView1, ArrayView2, CowArray, Data, Dimension,
-    ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, IxDyn, ShapeError, linalg::Dot, s,
+    ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot, s,
 };
 use ndarray_linalg::{
-    Eig, EigVals, EighInto, QR, QRInto, SVDDCInto, SVDInto, Scalar, UPLO, conjugate, svd::SVD,
+    Eig, EighInto, QR, QRInto, SVDDCInto, SVDInto, Scalar, UPLO, conjugate, svd::SVD,
 };
 use num_traits::{ConstZero, clamp};
 
@@ -21,7 +21,7 @@ pub fn conj<S: Data, D: Dimension>(x: &ArrayBase<S, D>) -> Result<Array<S::Elem,
 where
     S::Elem: Clone + Scalar,
 {
-    let x_full_ix = x.shape().into_iter().product();
+    let x_full_ix = x.shape().iter().product();
 
     let x_mat = ten_to_mat(x, [x_full_ix, 1])?;
     let x_conj_mat: Array2<S::Elem> = conjugate(&x_mat);

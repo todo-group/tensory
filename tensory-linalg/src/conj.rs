@@ -1,7 +1,6 @@
 use tensory_core::{
-    bound_tensor::BoundTensor,
     mapper::AxisMapper,
-    repr::{AsViewMutRepr, AsViewRepr, TensorRepr},
+    repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
 };
 

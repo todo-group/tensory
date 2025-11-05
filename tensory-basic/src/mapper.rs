@@ -18,7 +18,8 @@ use tensory_core::{
     mapper::{
         AxisMapper, BuildableMapper, ConnectAxisOrigin, ConnectMapper, DecompConf,
         DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, GroupMapper, GroupedAxes,
-        GroupedMapper, OverlayAxisMapping, OverlayMapper, ReplaceMapper, TranslateMapper,
+        GroupedMapper, OverlayAxisMapping, OverlayMapper, ReplaceMapper, SolveConf,
+        SolveGroupedMapper, TranslateMapper,
     },
 };
 
@@ -39,7 +40,7 @@ impl<T> VecMapper<T> {
     }
 }
 
-unsafe impl<T: Eq + Clone> AxisMapper for VecMapper<T> {
+unsafe impl<T: Eq> AxisMapper for VecMapper<T> {
     type Id = T;
 
     fn naxes(&self) -> usize {
@@ -67,7 +68,7 @@ impl Display for BuildErr {
 }
 impl Error for BuildErr {}
 
-impl<T: Eq + Clone, I: Iterator<Item = Self::Id>> BuildableMapper<I> for VecMapper<T> {
+impl<T: Eq, I: Iterator<Item = Self::Id>> BuildableMapper<I> for VecMapper<T> {
     type Err = BuildErr;
     fn build(iter: I) -> Result<Self, Self::Err> {
         let v = iter.collect();
@@ -84,7 +85,7 @@ impl Display for OverlayErr {
 }
 impl Error for OverlayErr {}
 
-unsafe impl<T: Eq + Clone> OverlayMapper<2> for VecMapper<T> {
+unsafe impl<T: Eq> OverlayMapper<2> for VecMapper<T> {
     type Err = OverlayErr;
 
     fn overlay([lhs, rhs]: [Self; 2]) -> Result<(Self, OverlayAxisMapping<2>), Self::Err> {
@@ -107,7 +108,7 @@ unsafe impl<T: Eq + Clone> OverlayMapper<2> for VecMapper<T> {
     }
 }
 
-unsafe impl<T: Eq + Clone> ConnectMapper<2> for VecMapper<T> {
+unsafe impl<T: Eq> ConnectMapper<2> for VecMapper<T> {
     type Err = Infallible;
     fn connect([lhs, rhs]: [Self; 2]) -> Result<(Self, ConnectAxisOrigin<2>), Self::Err> {
         let lhs_len = lhs.naxes();
@@ -161,12 +162,12 @@ unsafe impl<T: Eq + Clone> ConnectMapper<2> for VecMapper<T> {
     }
 }
 
-unsafe impl<'a, Id: Eq + Clone, K: Iterator<Item = &'a Id> + ExactSizeIterator>
-    GroupMapper<2, LegSetArg<K>> for VecMapper<Id>
+unsafe impl<'a, Id: Eq, K: Iterator<Item = &'a Id> + ExactSizeIterator> GroupMapper<2, LegSetArg<K>>
+    for VecMapper<Id>
 where
     Id: 'a,
 {
-    type Grouped = SplitBroker<Id>;
+    type Grouped = SplitMapper<Id>;
     type Err = Infallible;
 
     fn split(self, queue: LegSetArg<K>) -> Result<(Self::Grouped, GroupedAxes<2>), Self::Err> {
@@ -198,7 +199,7 @@ where
             }
         }
         Ok((
-            SplitBroker {
+            SplitMapper {
                 first: first_ids,
                 second: second_ids,
             },
@@ -216,12 +217,12 @@ impl Display for EquivGroupErr {
 }
 impl Error for EquivGroupErr {}
 
-unsafe impl<'a, Id: Eq + Clone, K: Iterator<Item = (&'a Id, &'a Id)> + ExactSizeIterator>
+unsafe impl<'a, Id: Eq, K: Iterator<Item = (&'a Id, &'a Id)> + ExactSizeIterator>
     EquivGroupMapper<2, LegSetArg<K>> for VecMapper<Id>
 where
     Id: 'a,
 {
-    type Grouped = SplitBroker<Id>;
+    type Grouped = SplitMapper<Id>;
     type Err = EquivGroupErr;
 
     fn equiv_split(
@@ -266,7 +267,7 @@ where
             }
         }
         Ok((
-            SplitBroker {
+            SplitMapper {
                 first: first_ids,
                 second: second_ids,
             },
@@ -275,17 +276,21 @@ where
     }
 }
 
-pub struct SplitBroker<Id> {
+pub struct SplitMapper<Id> {
     first: Vec<Id>,
     second: Vec<Id>,
 }
 
-unsafe impl<Id: Eq + Clone> GroupedMapper<2> for SplitBroker<Id> {
+unsafe impl<Id: Eq> GroupedMapper<2> for SplitMapper<Id> {
     type Mapper = VecMapper<Id>;
 }
 
-unsafe impl<const M: usize, Id: Eq + Clone> DecompGroupedMapper<2, M> for SplitBroker<Id> {
-    type Err = Infallible;
+#[derive(Debug, Error)]
+#[error("post split error")]
+pub struct PostSplitError;
+
+unsafe impl<const M: usize, Id: Eq> DecompGroupedMapper<2, M> for SplitMapper<Id> {
+    type Err = PostSplitError;
     fn decomp(
         self,
         conf: DecompConf<2, M, <Self::Mapper as AxisMapper>::Id>,
@@ -301,7 +306,43 @@ unsafe impl<const M: usize, Id: Eq + Clone> DecompGroupedMapper<2, M> for SplitB
         x[first].extend(self.first);
         x[second].extend(self.second);
 
-        Ok(x.map(|v| unsafe { VecMapper::from_raw_unchecked(v) }))
+        let middle = x.map(|v| VecMapper::from_raw(v));
+        if middle.iter().all(|x| x.is_ok()) {
+            Ok(middle.map(|x| unsafe { x.unwrap_unchecked() }))
+        } else {
+            Err(PostSplitError)
+        }
+    }
+}
+
+unsafe impl<const M: usize, Id: Eq + Clone> SolveGroupedMapper<2, M> for SplitMapper<Id> {
+    type Err = PostSplitError;
+    fn solve(
+        self,
+        conf: SolveConf<2, M, <Self::Mapper as AxisMapper>::Id>,
+    ) -> Result<[Self::Mapper; M], Self::Err> {
+        let (group_belongs, new_bonds) = conf.into_raw();
+
+        let mut x: [Vec<Id>; M] = core::array::from_fn(|_| Vec::new());
+        for (g, id) in new_bonds.into_iter() {
+            x[g].push(id);
+        }
+        for i in 0..M {
+            let [first_add, second_add] = group_belongs[i];
+            if first_add {
+                x[i].extend(self.first.iter().cloned());
+            }
+            if second_add {
+                x[i].extend(self.second.iter().cloned());
+            }
+        }
+
+        let middle = x.map(|v| VecMapper::from_raw(v));
+        if middle.iter().all(|x| x.is_ok()) {
+            Ok(middle.map(|x| unsafe { x.unwrap_unchecked() }))
+        } else {
+            Err(PostSplitError)
+        }
     }
 }
 
@@ -311,7 +352,7 @@ pub struct ReplaceErr;
 
 impl<
     'a,
-    Id: Eq + Clone + 'a,
+    Id: Eq + 'a,
     K: Iterator<Item = &'a Id> + ExactSizeIterator,
     V: Iterator<Item = Id> + ExactSizeIterator,
 > ReplaceMapper<LegMapArg<K, V>> for VecMapper<Id>
@@ -338,7 +379,7 @@ impl<
 #[error("translation error")]
 pub struct TranslateErr;
 
-impl<Id: Eq + Clone, C> TranslateMapper<C> for VecMapper<Id> {
+impl<Id: Eq, C> TranslateMapper<C> for VecMapper<Id> {
     type Err = TranslateErr;
     fn translate<
         'a,

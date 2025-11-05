@@ -1,15 +1,15 @@
 use alloc::vec;
 
 use tensory_core::{
-    mapper::{AxisMapper, DecompConf, DecompError, DecompGroupedMapper, GroupMapper, GroupedAxes},
-    repr::{AsViewRepr, TensorRepr},
+    mapper::{AxisMapper, DecompConf, DecompGroupedMapper, GroupMapper, GroupedAxes, SplittyError},
+    repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
 };
 
 /// Raw context of QR operation.
 ///
 /// This trait is unsafe because the implementation must ensure that the list of `QrAxisProvenance` is valid for the given tensor.
-pub unsafe trait QrContextImpl<A: TensorRepr> {
+pub unsafe trait QrCtxImpl<A: TensorRepr> {
     /// The type of the result tensor representation corresponding Q.
     type Q: TensorRepr; // axis order: a, <from A for Q>
     /// The type of the result tensor representation corresponding R.
@@ -34,10 +34,10 @@ pub unsafe trait QrContextImpl<A: TensorRepr> {
 /// Safe version if QrContextImpl.
 ///
 /// The blanket implementation checks both input and output.
-pub trait QrContext<A: TensorRepr>: QrContextImpl<A> {
+pub trait QrCtx<A: TensorRepr>: QrCtxImpl<A> {
     fn qr(self, a: A, axes_split: GroupedAxes<2>) -> Result<(Self::Q, Self::R), Self::Err>;
 }
-impl<C: QrContextImpl<A>, A: TensorRepr> QrContext<A> for C {
+impl<C: QrCtxImpl<A>, A: TensorRepr> QrCtx<A> for C {
     fn qr(self, a: A, axes_split: GroupedAxes<2>) -> Result<(Self::Q, Self::R), Self::Err> {
         if a.naxes() != axes_split.len() {
             panic!("Incompatible tensor dimensions");
@@ -53,7 +53,7 @@ pub struct TensorQr<A: TensorRepr, M: AxisMapper> {
     axes_split: GroupedAxes<2>,
 }
 
-impl<A: TensorRepr, M: AxisMapper, C: QrContext<A>> TensorTask<C> for TensorQr<A, M> {
+impl<A: TensorRepr, M: AxisMapper, C: QrCtx<A>> TensorTask<C> for TensorQr<A, M> {
     type Output = Result<(Tensor<C::Q, M>, Tensor<C::R, M>), C::Err>;
 
     fn with(self, ctx: C) -> Self::Output {
@@ -75,7 +75,7 @@ pub trait TensorQrExt<A: TensorRepr, M: AxisMapper>: Sized {
         set: Q,
         q_qr_leg: M::Id,
         r_qr_leg: M::Id,
-    ) -> Result<TensorQr<A, M>, DecompError<M::Err, <M::Grouped as DecompGroupedMapper<2, 2>>::Err>>
+    ) -> Result<TensorQr<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 2>>::Err>>
     where
         M: GroupMapper<2, Q>,
         M::Grouped: DecompGroupedMapper<2, 2>;
@@ -83,7 +83,7 @@ pub trait TensorQrExt<A: TensorRepr, M: AxisMapper>: Sized {
         self,
         set: Q,
         qr_leg: M::Id,
-    ) -> Result<TensorQr<A, M>, DecompError<M::Err, <M::Grouped as DecompGroupedMapper<2, 2>>::Err>>
+    ) -> Result<TensorQr<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 2>>::Err>>
     where
         M: GroupMapper<2, Q>,
         M::Grouped: DecompGroupedMapper<2, 2>,
@@ -98,7 +98,7 @@ impl<T: ToTensor> TensorQrExt<T::Repr, T::Mapper> for T {
         r_qr_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorQr<T::Repr, T::Mapper>,
-        DecompError<
+        SplittyError<
             <T::Mapper as GroupMapper<2, Q>>::Err,
             <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
         >,
@@ -108,14 +108,14 @@ impl<T: ToTensor> TensorQrExt<T::Repr, T::Mapper> for T {
         <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.split(queue).map_err(|e| DecompError::Split(e))?;
+        let (grouped, axes_split) = legs.split(queue).map_err(|e| SplittyError::Split(e))?;
         let [q_legs, r_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 1],
                 vec![((0, q_qr_leg), (1, r_qr_leg))],
             ))
         }
-        .map_err(|e| DecompError::Decomp(e))?;
+        .map_err(|e| SplittyError::Use(e))?;
         Ok(TensorQr {
             a: raw,
             q_legs,
@@ -129,7 +129,7 @@ impl<T: ToTensor> TensorQrExt<T::Repr, T::Mapper> for T {
         qr_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorQr<T::Repr, T::Mapper>,
-        DecompError<
+        SplittyError<
             <T::Mapper as GroupMapper<2, Q>>::Err,
             <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
         >,

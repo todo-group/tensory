@@ -11,20 +11,18 @@ use crate::{
 ///
 /// # Safety
 ///
-/// The implementor MUST ensure that the result tensor must have the proper axis structure.
+/// The implementor MUST ensure that the result tensor must have the proper "axis structure" inherited from the input tensors describe with `axis_origin`.
 pub unsafe trait MulCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
     type Err;
 
-    /// Performs contraction operation on the tensors `lhs` and `rhs` with the given axis pairs, and returns the result tensor and the provenance of each axis.
+    /// Performs contraction operation on the tensors `lhs` and `rhs` with the given axis pairs.
     ///
     /// # Safety
     ///
-    /// the user must ensure that the axis pairs are valid for the given tensors.
-    ///
-    /// the implementor must ensure the list of `ContractionAxisProvenance` is valid for the given tensors.
+    /// the user MUST ensure that `axis_origin` has the same numbers of axes same as the input tensors.
     unsafe fn mul_unchecked(
         self,
         lhs: Lhs,
@@ -33,11 +31,11 @@ pub unsafe trait MulCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
     ) -> Result<Self::Res, Self::Err>;
 }
 
-/// Safe version of ContractionContextImpl.
+/// Safe version of `MulCtxImpl`.
 ///
-/// The blanket implementation checks both input and output.
+/// The blanket implementation checks input and panic if the condition is not satisfied.
 pub trait MulCtx<Lhs: TensorRepr, Rhs: TensorRepr>: MulCtxImpl<Lhs, Rhs> {
-    /// Safe version of mul_unchecked.
+    /// Safe version of `mul_unchecked`.
     fn mul(
         self,
         lhs: Lhs,
@@ -61,6 +59,7 @@ impl<C: MulCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> MulCtx<Lhs, Rhs>
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Intermediate task struct for contraction operation.
 pub struct TensorMul<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
     lhs: L,
     rhs: R,
@@ -69,6 +68,7 @@ pub struct TensorMul<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
 }
 
 impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorMul<L, R, M> {
+    /// Construct a `TensorMul` by provided closure.
     pub fn by_manager(
         lhs: Tensor<L, M>,
         rhs: Tensor<R, M>,
@@ -86,6 +86,7 @@ impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorMul<L, R, M> {
             axis_origin,
         }
     }
+    /// Try to construct a `TensorMul` by provided closure.
     pub fn try_by_manager<E>(
         lhs: Tensor<L, M>,
         rhs: Tensor<R, M>,
@@ -154,8 +155,11 @@ impl_mul!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
 impl_mul!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 impl_mul!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 
+/// Runtime trait for contraction operation.
 pub trait MulRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
+    /// The context type.
     type Ctx: MulCtxImpl<Lhs, Rhs>;
+    /// Returns the context.
     fn mul_ctx(&self) -> Self::Ctx;
 }
 

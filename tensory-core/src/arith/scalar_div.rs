@@ -10,7 +10,9 @@ use crate::{
 
 /// Raw context of left scalar division operation.
 ///
-/// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
 pub unsafe trait LeftScalarDivCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
@@ -18,21 +20,18 @@ pub unsafe trait LeftScalarDivCtx<A: TensorRepr, E> {
     type Err;
 
     /// Performs left scalar division operation on the tensor `a`.
-    ///
-    /// # Safety
-    ///
-    /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn left_scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
-pub struct LeftScalarDiv<A: TensorRepr, M: AxisMapper, E> {
+/// Intermediate task struct for left scalar division operation.
+pub struct TensorLeftScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
-    res_broker: M,
+    res_mapper: M,
 }
 
 impl<A: TensorRepr, M: AxisMapper, E, C: LeftScalarDivCtx<A, E>> TensorTask<C>
-    for LeftScalarDiv<A, M, E>
+    for TensorLeftScalarDiv<A, M, E>
 {
     type Output = Result<Tensor<C::Res, M>, C::Err>;
 
@@ -42,13 +41,15 @@ impl<A: TensorRepr, M: AxisMapper, E, C: LeftScalarDivCtx<A, E>> TensorTask<C>
 
         let aconj = ctx.left_scalar_div(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
     }
 }
 
 /// Raw context of right scalar division operation.
 ///
-/// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
 pub unsafe trait RightScalarDivCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
@@ -56,17 +57,14 @@ pub unsafe trait RightScalarDivCtx<A: TensorRepr, E> {
     type Err;
 
     /// Performs right scalar division operation on the tensor `a`.
-    ///
-    /// # Safety
-    ///
-    /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn right_scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 
+/// Intermediate task struct for right scalar division operation.
 pub struct TensorRightScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
-    res_broker: M,
+    res_mapper: M,
 }
 
 impl<A: TensorRepr, M: AxisMapper, E, C: RightScalarDivCtx<A, E>> TensorTask<C>
@@ -80,13 +78,15 @@ impl<A: TensorRepr, M: AxisMapper, E, C: RightScalarDivCtx<A, E>> TensorTask<C>
 
         let aconj = ctx.right_scalar_div(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_broker) })
+        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
     }
 }
 
-/// Raw context of scalar division operation. (no left/right)
+/// Raw context of commutative scalar division operation. (no left/right)
 ///
-/// This trait is unsafe because the implementation must ensure that the result tensor must have the same axis structure as the input tensor.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
 pub unsafe trait CommutativeScalarDivCtx<A: TensorRepr, E> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
@@ -94,10 +94,6 @@ pub unsafe trait CommutativeScalarDivCtx<A: TensorRepr, E> {
     type Err;
 
     /// Performs left scalar division operation on the tensor `a`.
-    ///
-    /// # Safety
-    ///
-    /// the implementor must ensure the result tensor has the same axis structure as the input tensor.
     fn scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
 }
 unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivCtx<A, E>> LeftScalarDivCtx<A, E> for C {
@@ -117,21 +113,36 @@ unsafe impl<A: TensorRepr, E, C: CommutativeScalarDivCtx<A, E>> RightScalarDivCt
     }
 }
 
-impl<A: TensorRepr, M: AxisMapper> Tensor<A, M> {
-    pub fn left_div<E>(self, lhs: E) -> LeftScalarDiv<A, M, E> {
-        let (a, broker) = self.into_raw();
-        LeftScalarDiv {
+/// Extension trait for left/right scalar division operation on tensors.
+pub trait TensorScalarDivExt<E> {
+    /// The type of the tensor representation.
+    type A: TensorRepr;
+    /// The type of the axis mapper.
+    type M: AxisMapper;
+    /// Creates a left scalar division task.
+    fn left_div(self, lhs: E) -> TensorLeftScalarDiv<Self::A, Self::M, E>;
+    /// Creates a right scalar division task.
+    fn right_div(self, rhs: E) -> TensorRightScalarDiv<Self::A, Self::M, E>;
+}
+
+impl<T: ToTensor, E> TensorScalarDivExt<E> for T {
+    type A = T::Repr;
+    type M = T::Mapper;
+
+    fn left_div(self, lhs: E) -> TensorLeftScalarDiv<Self::A, Self::M, E> {
+        let (a, mapper) = self.to_tensor().into_raw();
+        TensorLeftScalarDiv {
             a,
             scalar: lhs,
-            res_broker: broker,
+            res_mapper: mapper,
         }
     }
-    pub fn right_div<E>(self, rhs: E) -> TensorRightScalarDiv<A, M, E> {
-        let (a, broker) = self.into_raw();
+    fn right_div(self, rhs: E) -> TensorRightScalarDiv<Self::A, Self::M, E> {
+        let (a, mapper) = self.to_tensor().into_raw();
         TensorRightScalarDiv {
             a,
             scalar: rhs,
-            res_broker: broker,
+            res_mapper: mapper,
         }
     }
 }
@@ -176,13 +187,40 @@ impl_scalar_div!(Tensor<A, M>);
 impl_scalar_div!(&'a Tensor<A, M>,'a);
 impl_scalar_div!(&'a mut Tensor<A, M>,'a);
 
+/// Runtime trait for left scalar division operation.
 pub trait LeftScalarDivRuntime<A: TensorRepr, E>: Runtime {
+    /// The context type.
     type Ctx: LeftScalarDivCtx<A, E>;
+    /// Returns the context.
     fn left_scalar_div_ctx(&self) -> Self::Ctx;
 }
+
+/// Runtime trait for right scalar division operation.
 pub trait RightScalarDivRuntime<A: TensorRepr, E>: Runtime {
+    /// The context type.
     type Ctx: RightScalarDivCtx<A, E>;
+    /// Returns the context.
     fn right_scalar_div_ctx(&self) -> Self::Ctx;
+}
+
+/// Runtime trait for commutative scalar division operation. (no left/right)
+pub trait CommutativeScalarDivRuntime<A: TensorRepr, E>: Runtime {
+    /// The context type.
+    type Ctx: CommutativeScalarDivCtx<A, E>;
+    /// Returns the context.
+    fn scalar_div_ctx(&self) -> Self::Ctx;
+}
+impl<T: CommutativeScalarDivRuntime<A, E>, A: TensorRepr, E> LeftScalarDivRuntime<A, E> for T {
+    type Ctx = T::Ctx;
+    fn left_scalar_div_ctx(&self) -> Self::Ctx {
+        self.scalar_div_ctx()
+    }
+}
+impl<T: CommutativeScalarDivRuntime<A, E>, A: TensorRepr, E> RightScalarDivRuntime<A, E> for T {
+    type Ctx = T::Ctx;
+    fn right_scalar_div_ctx(&self) -> Self::Ctx {
+        self.scalar_div_ctx()
+    }
 }
 
 macro_rules! impl_scalar_div_runtime {

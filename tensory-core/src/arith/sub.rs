@@ -9,18 +9,20 @@ use crate::{
 
 /// Raw context of subtraction operation.
 ///
-/// The implementor MUST ensure that the result tensor must have the proper axis structure specified by `axis_mapping`.
+/// # Safety
+///
+/// The implementor MUST ensure that the result tensor has the proper "axis structure" inherited from the input tensors described with `axis_mapping`.
 pub unsafe trait SubCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
     /// The type of the result tensor representation.
     type Res: TensorRepr;
     /// The type of the error returned by the context. (considered as internal error)
     type Err;
 
-    /// Performs subtraction operation on the tensors `lhs` and `rhs` with the given axis pairs, and returns the result tensor each axis.
+    /// Performs subtraction operation on the tensors `lhs` and `rhs` with the given axis overlay mapping.
     ///
     /// # Safety
     ///
-    /// the user must ensure that `axis_origin` is for the number of axes same as the input tensors.
+    /// the user MUST ensure that `axis_mapping` has the same number of axes same as the input tensors.
     unsafe fn sub_unchecked(
         self,
         lhs: Lhs,
@@ -28,10 +30,11 @@ pub unsafe trait SubCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
         axis_mapping: OverlayAxisMapping<2>,
     ) -> Result<Self::Res, Self::Err>;
 }
-/// Safe version if SubCtxImpl.
+/// Safe version if `SubCtxImpl`.
 ///
-/// The blanket implementation checks both input and output.
+/// The blanket implementation checks input and panic if the condition is not satisfied.
 pub trait SubCtx<Lhs: TensorRepr, Rhs: TensorRepr>: SubCtxImpl<Lhs, Rhs> {
+    /// Safe version of `sub_unchecked`.
     fn sub(
         self,
         lhs: Lhs,
@@ -56,6 +59,7 @@ impl<C: SubCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> SubCtx<Lhs, Rhs>
     }
 }
 
+/// Intermediate task struct for subtraction operation.
 pub struct TensorSub<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
     lhs: L,
     rhs: R,
@@ -63,6 +67,7 @@ pub struct TensorSub<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
     axis_mapping: OverlayAxisMapping<2>,
 }
 impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorSub<L, R, M> {
+    /// Construct a `TensorSub` by provided closure.
     pub fn by_manager(
         lhs: Tensor<L, M>,
         rhs: Tensor<R, M>,
@@ -80,6 +85,7 @@ impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorSub<L, R, M> {
             axis_mapping,
         }
     }
+    /// Try to construct a `TensorSub` by provided closure.
     pub fn try_by_manager<E>(
         lhs: Tensor<L, M>,
         rhs: Tensor<R, M>,
@@ -148,8 +154,11 @@ impl_sub!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
 impl_sub!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 impl_sub!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 
+/// Runtime trait for subtraction operation.
 pub trait SubRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
+    /// The context type.
     type Ctx: SubCtxImpl<Lhs, Rhs>;
+    /// Returns the context.
     fn sub_ctx(&self) -> Self::Ctx;
 }
 

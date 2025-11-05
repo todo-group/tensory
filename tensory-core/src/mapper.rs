@@ -276,6 +276,45 @@ impl<const N: usize, const M: usize, Id> DecompConf<N, M, Id> {
     }
 }
 
+pub unsafe trait SolveGroupedMapper<const N: usize, const M: usize>:
+    GroupedMapper<N>
+{
+    type Err;
+    fn solve(
+        self,
+        conf: SolveConf<N, M, <Self::Mapper as AxisMapper>::Id>,
+    ) -> Result<[Self::Mapper; M], Self::Err>;
+}
+pub struct SolveConf<const N: usize, const M: usize, Id> {
+    group_belongs: [[bool; N]; M],
+    new_legs: Vec<(usize, Id)>,
+}
+impl<const N: usize, const M: usize, Id> SolveConf<N, M, Id> {
+    pub unsafe fn from_raw_unchecked(
+        group_belongs: [[bool; N]; M],
+        new_legs: Vec<(usize, Id)>,
+    ) -> Self {
+        Self {
+            group_belongs,
+            new_legs,
+        }
+    }
+    pub fn from_raw(
+        group_belongs: [[bool; N]; M],
+        new_legs: Vec<(usize, Id)>,
+    ) -> Result<Self, ([[bool; N]; M], Vec<(usize, Id)>)> {
+        for &(g, _) in new_legs.iter() {
+            if g >= M {
+                return Err((group_belongs, new_legs));
+            }
+        }
+        Ok(unsafe { Self::from_raw_unchecked(group_belongs, new_legs) })
+    }
+    pub fn into_raw(self) -> ([[bool; N]; M], Vec<(usize, Id)>) {
+        (self.group_belongs, self.new_legs)
+    }
+}
+
 pub trait TranslateMapper<Content>: AxisMapper {
     type Err;
     fn translate<
@@ -291,11 +330,11 @@ pub trait TranslateMapper<Content>: AxisMapper {
 }
 
 #[derive(Error, Debug)]
-pub enum DecompError<SE, DE> {
+pub enum SplittyError<SE, DE> {
     #[error("Split error: {0}")]
     Split(SE),
-    #[error("Decomp error: {0}")]
-    Decomp(DE),
+    #[error("Use error: {0}")]
+    Use(DE),
 }
 
 pub trait ReplaceMapper<Q>: AxisMapper {

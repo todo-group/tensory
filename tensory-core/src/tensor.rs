@@ -163,9 +163,27 @@ impl<'a, T: AsViewMutRepr<'a>, M: AxisMapper + Clone> ToTensor for &'a mut Tenso
     }
 }
 
+/// Trait expressing a tensor operation "task" that can be executed with a context.
+///
+/// Tensory uses a "task" and "context" model for expressing tensor operations. A "task" represents an abstract operation defined in axis/leg level description. The implementation of the "task" is implemented on "context". Here, you can consume the tensor and "context" for the operation. Therefore "context" can be considered as a generalized "Strategy" design pattern, which are allowed to hold own resources.
+///
+/// In practice, it is RECOMMENDED to execute mappers decomposition/reconstruction in the construction of the "task", and to delegate the operation on representation to "context".
 pub trait TensorTask<C> {
+    /// The output type of the task.
     type Output;
+    /// Executes the task, delegating the implementation to `ctx`.
     fn with(self, ctx: C) -> Self::Output;
+}
+
+/// Utility trait for executing a tensor task with the default context `()`.
+pub trait TensorDefaultTask: TensorTask<()> {
+    /// Executes the task with the default context `()`.
+    fn exec(self) -> Self::Output;
+}
+impl<T: TensorTask<()>> TensorDefaultTask for T {
+    fn exec(self) -> Self::Output {
+        self.with(())
+    }
 }
 
 // struct TensorMutRefGuard<'a, M:AxisMgr, T:TensorRepr> {
