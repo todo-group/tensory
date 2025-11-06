@@ -32,6 +32,13 @@ fn main() -> anyhow::Result<()> {
 
     let mut rng = SmallRng::seed_from_u64(0);
 
+    // norm
+    {
+        let t = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?; // [a,b,c,d]
+        let n = (&t).norm().exec()?; // scalar
+        println!("norm: {}", n);
+    }
+
     // conj
     {
         let t = Tensor::<Complex<f64>>::random_unitary_using(
