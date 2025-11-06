@@ -17,7 +17,7 @@ tensory-linalg = { workspace = true }
 
 rand = { workspace = true }
 itertools = { workspace = true }
-
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tensory-basic = { workspace = true }

@@ -17,12 +17,14 @@ use tensory_basic::{
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
 
-use tensory_core::{leg, tensor::TensorTask};
+use tensory_core::prelude::*;
 
 type Leg = Prime<Id128>;
 type Tensor<E> = NdDenseTensor<E, VecMapper<Leg>>;
 
 fn main() -> anyhow::Result<()> {
+    // here you can
+
     // resource allocation aware
     //let alloc = CoreAlloc::new();
     //let handle = BlasHandle::new();
@@ -43,8 +45,8 @@ fn main() -> anyhow::Result<()> {
     let f_n = 60;
 
     // {
-    //     let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n])?;
-    //     let tb = Tensor::<f64>::random(leg![b=>b_n, c=>c_n, d=>d_n, a=>a_n])?;
+    //     let ta = Tensor::<f64>::random(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n])?;
+    //     let tb = Tensor::<f64>::random(lm![b=>b_n, c=>c_n, d=>d_n, a=>a_n])?;
     //     let x = (&ta + &tb)?.with(())?;
     // }
 
@@ -54,9 +56,9 @@ fn main() -> anyhow::Result<()> {
 
     let mut rng = SmallRng::seed_from_u64(0);
 
-    let ta = Tensor::<f64>::random_using(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
-    let tb = Tensor::<f64>::random_using(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n], &mut rng)?;
-    let tc = Tensor::<f64>::zero(leg![a=>a_n, b=>b_n, e=>e_n, f=>f_n])?;
+    let ta = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
+    let tb = Tensor::<f64>::random_using(lm![c=>c_n, d=>d_n, e=>e_n, f=>f_n], &mut rng)?;
+    let tc = Tensor::<f64>::zero(lm![a=>a_n, b=>b_n, e=>e_n, f=>f_n])?;
 
     println!("before mul");
 
@@ -83,9 +85,9 @@ fn main() -> anyhow::Result<()> {
         println!("t = {}", t);
 
         let tx =
-            Tensor::<f64>::random_using(leg![ b=>b_n, e=>e_n,a=>a_n, f=>f_n], &mut rng).unwrap();
+            Tensor::<f64>::random_using(lm![ b=>b_n, e=>e_n,a=>a_n, f=>f_n], &mut rng).unwrap();
 
-        let svd = (&tx).svd(leg![&a, &b], us_leg, vs_leg)?;
+        let svd = (&tx).svd(ls![&a, &b], us_leg, vs_leg)?;
 
         let pre = Instant::now();
 
@@ -99,12 +101,6 @@ fn main() -> anyhow::Result<()> {
     println!("{}", x.as_secs_f64() / turns as f64);
 
     //svd(A, [a, b, c], us, sv);
-
-    // let cuhandle = CuBlasHandle::new();
-    // let cuta = CuTensor::trans(ta);
-    // let cutb = CuTensor::trans(tb);
-    // let cutc = CuTensor::trans(tc);
-    // let cutx = (cuta * cutb).by(handle.mul(cutc));
 
     Ok(())
 }

@@ -19,7 +19,7 @@ use tensory_core::{
         AxisMapper, BuildableMapper, ConnectAxisOrigin, ConnectMapper, DecompConf,
         DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, GroupMapper, GroupedAxes,
         GroupedMapper, OverlayAxisMapping, OverlayMapper, ReplaceMapper, SolveConf,
-        SolveGroupedMapper, TranslateMapper,
+        SolveGroupedMapper, SynBuildableMapper, TranslateMapper,
     },
 };
 
@@ -68,10 +68,18 @@ impl Display for BuildErr {
 }
 impl Error for BuildErr {}
 
-impl<T: Eq, I: Iterator<Item = Self::Id>> BuildableMapper<I> for VecMapper<T> {
+impl<T: Eq, I: Iterator<Item = T>> BuildableMapper<I> for VecMapper<T> {
     type Err = BuildErr;
     fn build(iter: I) -> Result<Self, Self::Err> {
         let v = iter.collect();
+        Self::from_raw(v).map_err(|_| BuildErr)
+    }
+}
+
+impl<T: Eq, I: Iterator<Item = [T; N]>, const N: usize> SynBuildableMapper<I> for VecMapper<T> {
+    type Err = BuildErr;
+    fn syn_build(iter: I) -> Result<Self, Self::Err> {
+        let v: Vec<_> = iter.flatten().collect();
         Self::from_raw(v).map_err(|_| BuildErr)
     }
 }

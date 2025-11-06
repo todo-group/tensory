@@ -107,15 +107,28 @@ impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
     }
 }
 
-impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
+/// General utility trait for tensor operations.
+pub trait TensorExt: ToTensor {
     /// Replace a ID of a leg of the tensor.
-    pub fn replace_leg<Q>(self, query: Q) -> Result<Self, M::Err>
+    fn replace_leg<Q>(
+        self,
+        query: Q,
+    ) -> Result<Tensor<Self::Repr, Self::Mapper>, <Self::Mapper as ReplaceMapper<Q>>::Err>
     where
-        M: ReplaceMapper<Q>,
+        Self::Mapper: ReplaceMapper<Q>;
+}
+
+impl<T: ToTensor> TensorExt for T {
+    fn replace_leg<Q>(
+        self,
+        query: Q,
+    ) -> Result<Tensor<Self::Repr, Self::Mapper>, <Self::Mapper as ReplaceMapper<Q>>::Err>
+    where
+        Self::Mapper: ReplaceMapper<Q>,
     {
-        let (repr, mapper) = self.into_raw();
+        let (repr, mapper) = self.to_tensor().into_raw();
         let mapper = mapper.replace(query)?;
-        Ok(unsafe { Self::from_raw_unchecked(repr, mapper) })
+        Ok(unsafe { Tensor::from_raw_unchecked(repr, mapper) })
     }
 }
 
@@ -230,6 +243,6 @@ impl<T: TensorTask<()>> TensorDefaultTask for T {
 
 //         let ts = Tensor::from_raw(raw_tensor).unwrap();
 
-//         println!("{:?}", ts.broker());
+//         println!("{:?}", ts.mapper());
 //     }
 // }

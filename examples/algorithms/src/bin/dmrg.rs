@@ -4,7 +4,7 @@ use tensory_basic::{
     mapper::VecMapper,
 };
 //use tensory_core::tensor::TensorRepr;
-use tensory_core::{args::LegMapArg, leg, tensor::TensorTask};
+use tensory_core::prelude::*;
 use tensory_linalg::{conj::TensorConjExt, svd::TensorSvdExt};
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 type Leg = Prime<Id128>;
@@ -18,11 +18,11 @@ fn main() -> anyhow::Result<()> {
     let hamil_virt: Vec<_> = (0..n + 1).map(|_| Leg::new()).collect();
 
     let mut psi: Vec<_> = (0..n)
-        .map(|i| Tensor::random(leg![phys[i]=>2, psi_virt[i]=>1, psi_virt[i + 1]=>1]).unwrap())
+        .map(|i| Tensor::random(lm![phys[i]=>2, psi_virt[i]=>1, psi_virt[i + 1]=>1]).unwrap())
         .collect();
     let hamil: Vec<_> = (0..n)
         .map(|i| {
-            Tensor::zero(leg![
+            Tensor::zero(lm![
                 phys[i]=>2,
                 phys[i].prime()=>2,
                 hamil_virt[i]=>1,
@@ -40,10 +40,7 @@ fn main() -> anyhow::Result<()> {
         std::println!("sweep {}", sweep);
         for i in 0..(n - 1) {
             std::println!("i {}", i);
-            let mut left = Tensor::zero(unsafe {
-                LegMapArg::from_raw_unchecked([].into_iter(), [].into_iter())
-            })
-            .unwrap();
+            let mut left = Tensor::zero(lm![]).unwrap();
             if i > 0 {
                 for j in 0..(i - 1) {
                     left = (&left * &psi[j])?.with(())?;
@@ -52,7 +49,7 @@ fn main() -> anyhow::Result<()> {
                         * &(&psi[j])
                             .conj()
                             .with(())?
-                            .replace_leg(leg![
+                            .replace_leg(lm![
                                 &phys[j]=> phys[j].prime(),
                                 &psi_virt[j]=> psi_virt[j].prime(),
                                 &psi_virt[j + 1]=> psi_virt[j + 1].prime()
@@ -62,10 +59,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            let mut right = Tensor::zero(unsafe {
-                LegMapArg::from_raw_unchecked([].into_iter(), [].into_iter())
-            })
-            .unwrap();
+            let mut right = Tensor::zero(lm![]).unwrap();
             for j in ((i + 2)..n).rev() {
                 right = (&right * &psi[j])?.with(())?;
                 right = (&right * &hamil[j])?.with(())?;
@@ -73,7 +67,7 @@ fn main() -> anyhow::Result<()> {
                     * &(&psi[j])
                         .conj()
                         .with(())?
-                        .replace_leg(leg![
+                        .replace_leg(lm![
                             &phys[j]=> phys[j].prime(),
                             &psi_virt[j]=> psi_virt[j].prime(),
                             &psi_virt[j + 1]=> psi_virt[j + 1].prime()
@@ -91,7 +85,7 @@ fn main() -> anyhow::Result<()> {
 
             let dum = Leg::new();
             let (u, s, v) = (&center)
-                .svd(leg![&phys[i], &psi_virt[i]], psi_virt[i + 1], dum)?
+                .svd(ls![&phys[i], &psi_virt[i]], psi_virt[i + 1], dum)?
                 .with((MaxIx(5),))?;
 
             let s = s.map(|e| e.into());

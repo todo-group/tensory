@@ -118,7 +118,7 @@ mod tests {
         println!("ii:{:?}", ii);
         assert_eq!(iii1, iii2);
 
-        //let k = leg![i=>1,j=>2].unwrap();
+        //let k = ls![i=>1,j=>2].unwrap();
         //println!("k: {:?}", k);
     }
 }

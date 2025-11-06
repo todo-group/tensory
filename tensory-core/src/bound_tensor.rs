@@ -3,9 +3,9 @@
 use thiserror::Error;
 
 use crate::{
-    mapper::AxisMapper,
+    mapper::{AxisMapper, ReplaceMapper},
     repr::{AsViewMutRepr, AsViewRepr, TensorRepr},
-    tensor::Tensor,
+    tensor::{Tensor, TensorExt},
 };
 
 /// A tensor bound with a runtime.
@@ -53,6 +53,36 @@ impl<R: TensorRepr, M: AxisMapper, RT: Runtime> BoundTensor<R, M, RT> {
     /// Get the mutable reference to the runtime.
     pub fn runtime_mut(&mut self) -> &mut RT {
         &mut self.runtime
+    }
+}
+
+/// General utility trait for bound tensor operations.
+pub trait BoundTensorExt: ToBoundTensor {
+    /// Replace a ID of a leg of the tensor.
+    fn replace_leg<Q>(
+        self,
+        query: Q,
+    ) -> Result<
+        BoundTensor<Self::Repr, Self::Mapper, Self::Runtime>,
+        <Self::Mapper as ReplaceMapper<Q>>::Err,
+    >
+    where
+        Self::Mapper: ReplaceMapper<Q>;
+}
+
+impl<T: ToBoundTensor> BoundTensorExt for T {
+    fn replace_leg<Q>(
+        self,
+        query: Q,
+    ) -> Result<
+        BoundTensor<Self::Repr, Self::Mapper, Self::Runtime>,
+        <Self::Mapper as ReplaceMapper<Q>>::Err,
+    >
+    where
+        Self::Mapper: ReplaceMapper<Q>,
+    {
+        let (t, rt) = self.to_bound_tensor().into_raw();
+        t.replace_leg(query).map(|t| t.bind(rt))
     }
 }
 

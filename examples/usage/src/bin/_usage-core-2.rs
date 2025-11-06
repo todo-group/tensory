@@ -11,10 +11,16 @@ use tensory_basic::{
     id::{Id128, Prime},
     mapper::VecMapper,
 };
-use tensory_linalg::{norm::TensorNormExt, svd::TensorSvdExt};
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
+use tensory_linalg::{
+    norm::{BoundTensorNormExt, TensorNormExt},
+    svd::{BoundTensorSvdExt, TensorSvdExt},
+};
+use tensory_ndarray::{
+    NdDenseTensor, NdDenseTensorExt, NdRuntime,
+    cut_filter::{Cutoff, MaxIx},
+};
 
-use tensory_core::{leg, tensor::TensorTask};
+use tensory_core::prelude::*;
 
 // type aliases for convenience. You can change them to other implementations.
 type Leg = Prime<Id128>;
@@ -45,34 +51,53 @@ fn main() -> anyhow::Result<()> {
     // here we create a random tensor with legs a,b,c,d,e,f, using `rng` as RNG.
     // each leg is assigned with its dimension.
     // (note: this constructor is provided by `NdDenseTensorExt` trait)
-    let t = Tensor::<f64>::random_using(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
+    let t = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
+
+    let t = t.bind(NdRuntime);
 
     println!("done");
 
     // alternatively, you can use `Tensor::random(...)` method to create a random tensor using default RNG.
-    // let t = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n, e=>e_n, f=>f_n])?;
+    // let t = Tensor::<f64>::random(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n, e=>e_n, f=>f_n])?;
 
     // scalar multiplication and division using the overloaded `*` and `/` operator.
-    // here we use strategy pattern-like api to perform the actual computation using `.with(())` method.
+    // here, we use strategy pattern-like api to perform the actual computation using `.with(())` method.
     // same pattern appears in many other operations in tensory. The middle struct implements TensorTask<C> trait.
-    let t_mul_pi = (t.clone() * PI).with(())?;
-    let t_mul_pi_div_pi = (t_mul_pi / PI).with(())?;
+    let t_mul_pi = (t.clone() * PI)?;
+    let t_mul_pi_div_pi = (t_mul_pi / PI)?;
 
     // due to the limitation of rust syntax, tuple is required for scalar operations. but if the scalar implements TensorScalar, it works without tuple in right mul/div.
-    // let t_double = (t * (2.0,)).with(())?;
-    // let t_double_half = (t_double / (2.0,)).with(())?;
+    //let t_double = (t * (2.0,))?;
+    //let t_double_half = (t_double / (2.0,))?;
 
-    let diff = (&t_mul_pi_div_pi - &t)?.with(())?;
+    // to compare t and t_mul_pi_div_pi, we compute their difference and its norm.
+    // here, we use `&` operator to borrow tensors instead of moving them.
+    let diff = (&t_mul_pi_div_pi - &t)?;
 
-    println!("difference norm: {}", (&diff).norm().with(())?);
+    // actually, this is a suger sysntax for:
+    //let diff = (t_mul_pi_div_pi.view() - t.view())?;
 
-    let t_2 = Tensor::<f64>::random_using(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
+    println!("difference norm after mul div: {}", (&diff).norm()?);
 
-    let t_sum = (&t + &t_2)?.with(())?;
+    let t2 =
+        Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?.bind(NdRuntime);
+
+    let t3 = (&t + &t2)?;
+
+    let (u, s, v) = (&t3).svd(ls![&a, &b], Leg::new(), Leg::new(), MaxIx(10))?;
+
+    let t3_again = (&(&u * &s)? * &v)?;
+
+    let diff3 = (&t3_again - &t3)?;
+
+    println!(
+        "difference norm after svd reconstruct: {}",
+        (&diff3).norm()? / (&t3).norm()?
+    );
 
     // // {
-    // //     let ta = Tensor::<f64>::random(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n])?;
-    // //     let tb = Tensor::<f64>::random(leg![b=>b_n, c=>c_n, d=>d_n, a=>a_n])?;
+    // //     let ta = Tensor::<f64>::random(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n])?;
+    // //     let tb = Tensor::<f64>::random(lm![b=>b_n, c=>c_n, d=>d_n, a=>a_n])?;
     // //     let x = (&ta + &tb)?.with(())?;
     // // }
 
@@ -80,9 +105,9 @@ fn main() -> anyhow::Result<()> {
 
     // println!("let's go");
 
-    // let ta = Tensor::<f64>::random_using(leg![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
-    // let tb = Tensor::<f64>::random_using(leg![c=>c_n, d=>d_n, e=>e_n, f=>f_n], &mut rng)?;
-    // let tc = Tensor::<f64>::zero(leg![a=>a_n, b=>b_n, e=>e_n, f=>f_n])?;
+    // let ta = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?;
+    // let tb = Tensor::<f64>::random_using(lm![c=>c_n, d=>d_n, e=>e_n, f=>f_n], &mut rng)?;
+    // let tc = Tensor::<f64>::zero(lm![a=>a_n, b=>b_n, e=>e_n, f=>f_n])?;
 
     // println!("before mul");
 
@@ -109,9 +134,9 @@ fn main() -> anyhow::Result<()> {
     //     println!("t = {}", t);
 
     //     let tx =
-    //         Tensor::<f64>::random_using(leg![ b=>b_n, e=>e_n,a=>a_n, f=>f_n], &mut rng).unwrap();
+    //         Tensor::<f64>::random_using(lm![ b=>b_n, e=>e_n,a=>a_n, f=>f_n], &mut rng).unwrap();
 
-    //     let svd = (&tx).svd(leg![&a, &b], us_leg, vs_leg)?;
+    //     let svd = (&tx).svd(ls![&a, &b], us_leg, vs_leg)?;
 
     //     let pre = Instant::now();
 

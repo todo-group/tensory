@@ -47,6 +47,11 @@ pub trait BuildableMapper<P>: AxisMapper {
     fn build(precursor: P) -> Result<Self, Self::Err>;
 }
 
+pub trait SynBuildableMapper<P>: AxisMapper {
+    type Err;
+    fn syn_build(precursor: P) -> Result<Self, Self::Err>;
+}
+
 pub unsafe trait OverlayMapper<const N: usize>: AxisMapper {
     type Err;
     fn overlay(mappers: [Self; N]) -> Result<(Self, OverlayAxisMapping<N>), Self::Err>;

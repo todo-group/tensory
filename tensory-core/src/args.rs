@@ -17,6 +17,20 @@ pub fn _from_array_pair<K, V, const N: usize>(
     unsafe { LegMapArg::from_raw_unchecked(keys.into_iter(), values.into_iter()) }
 }
 
+#[macro_export]
+macro_rules! ls {
+    ( $( $x:expr ),* ) => {
+        $crate::args::LegSetArg::from_raw([$($x),*].into_iter())
+    };
+}
+
+#[macro_export]
+macro_rules! lm {
+    ( $( $x:expr => $y:expr ),* ) => {
+        $crate::args::_from_array_pair([$($x),*],[$($y),*])
+    };
+}
+
 // impl<Id: Eq> LegAlloc<Id> {
 //     pub fn from_raw(legs: Vec<Id>) -> Result<Self, Vec<Id>> {
 //         if !check_unique(&legs) {

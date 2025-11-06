@@ -7,6 +7,8 @@ use tensory_core::{
 type Leg = Prime<Id128>;
 
 fn main() {
+    // this is an ideal example of tensory.
+
     // resource allocation handler
     let alloc = CoreAlloc::new(); // some memory allocator. This is necessary considering cache with multicore, NUMA architecture, MPI, etc.
     let handle = BlasHandle::new(); // blas handler. dynamic load (not link) is reccommended for portability.

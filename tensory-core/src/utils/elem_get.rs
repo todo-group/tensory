@@ -110,16 +110,6 @@ impl<A: ElemGetMutRepr, B: AxisMapper> Tensor<A, B> {
     }
 }
 
-// impl<M: TensorBroker, T: ElemGetMut> Tensor<M, T> {
-//     pub fn get_mut<Map>(&mut self, indices: Map) -> Result<Result<&mut T::E, T::Err>, M::Err>
-//     where
-//         M: TranslateBroker<Map, Content = T::Index>,
-//     {
-//         let v = self.broker().translate(indices)?;
-//         Ok(unsafe { self.repr_mut().get_mut_unchecked(v) })
-//     }
-// }
-
 impl<
     'a,
     A: ElemGetRepr,

@@ -1,6 +1,7 @@
 use alloc::vec;
 
 use tensory_core::{
+    bound_tensor::{BoundTensor, Runtime, RuntimeError, ToBoundTensor},
     mapper::{AxisMapper, DecompConf, DecompGroupedMapper, GroupMapper, GroupedAxes, SplittyError},
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
@@ -104,7 +105,7 @@ impl<A: TensorRepr, B: AxisMapper, C: SvdCtx<A>> TensorTask<C> for TensorSvd<A, 
 pub trait TensorSvdExt<A: TensorRepr, M: AxisMapper>: Sized {
     fn svd_with_more_ids<Q>(
         self,
-        set: Q,
+        query: Q,
         u_us_leg: M::Id,
         s_us_leg: M::Id,
         s_sv_leg: M::Id,
@@ -128,7 +129,7 @@ pub trait TensorSvdExt<A: TensorRepr, M: AxisMapper>: Sized {
 impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
     fn svd_with_more_ids<Q>(
         self,
-        queue: Q,
+        query: Q,
         u_us_leg: <T::Mapper as AxisMapper>::Id,
         s_us_leg: <T::Mapper as AxisMapper>::Id,
         s_sv_leg: <T::Mapper as AxisMapper>::Id,
@@ -145,7 +146,7 @@ impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
         <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.split(queue).map_err(SplittyError::Split)?;
+        let (grouped, axes_split) = legs.split(query).map_err(SplittyError::Split)?;
         let [u_legs, s_legs, v_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 2],
@@ -166,7 +167,7 @@ impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
     }
     fn svd<Q>(
         self,
-        set: Q,
+        query: Q,
         us_leg: <T::Mapper as AxisMapper>::Id,
         sv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
@@ -181,6 +182,213 @@ impl<T: ToTensor> TensorSvdExt<T::Repr, T::Mapper> for T {
         <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
         <T::Mapper as AxisMapper>::Id: Clone,
     {
-        self.svd_with_more_ids(set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
+        self.svd_with_more_ids(query, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg)
+    }
+}
+
+pub trait SvdWithOptionRuntime<A: TensorRepr, O>: Runtime {
+    type Ctx: SvdCtxImpl<A>;
+    fn svd_ctx(&self, opt: O) -> Self::Ctx;
+}
+
+pub trait BoundTensorSvdExt: ToBoundTensor {
+    fn svd_with_more_ids<Q, O>(
+        self,
+        query: Q,
+        u_us_leg: <Self::Mapper as AxisMapper>::Id,
+        s_us_leg: <Self::Mapper as AxisMapper>::Id,
+        s_sv_leg: <Self::Mapper as AxisMapper>::Id,
+        v_sv_leg: <Self::Mapper as AxisMapper>::Id,
+        option: O,
+    ) -> Result<
+        (
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::U,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::S,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::V,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+        ),
+        RuntimeError<
+            SplittyError<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                Self::Repr,
+            >>::Err,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        Self::Runtime: SvdWithOptionRuntime<Self::Repr, O>;
+
+    fn svd<Q, O>(
+        self,
+        query: Q,
+        us_leg: <Self::Mapper as AxisMapper>::Id,
+        sv_leg: <Self::Mapper as AxisMapper>::Id,
+        option: O,
+    ) -> Result<
+        (
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::U,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::S,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::V,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+        ),
+        RuntimeError<
+            SplittyError<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                Self::Repr,
+            >>::Err,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
+        Self::Runtime: SvdWithOptionRuntime<Self::Repr, O>;
+}
+
+impl<T: ToBoundTensor> BoundTensorSvdExt for T {
+    fn svd_with_more_ids<Q, O>(
+        self,
+        query: Q,
+        u_us_leg: <Self::Mapper as AxisMapper>::Id,
+        s_us_leg: <Self::Mapper as AxisMapper>::Id,
+        s_sv_leg: <Self::Mapper as AxisMapper>::Id,
+        v_sv_leg: <Self::Mapper as AxisMapper>::Id,
+        option: O,
+    ) -> Result<
+        (
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::U,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::S,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::V,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+        ),
+        RuntimeError<
+            SplittyError<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                Self::Repr,
+            >>::Err,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        Self::Runtime: SvdWithOptionRuntime<Self::Repr, O>,
+    {
+        let (a, rt) = self.to_bound_tensor().into_raw();
+
+        a.svd_with_more_ids(query, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg)
+            .map_err(RuntimeError::Axis)?
+            .with(rt.svd_ctx(option))
+            .map_err(RuntimeError::Ctx)
+            .map(|(u, s, v)| (u.bind(rt.clone()), s.bind(rt.clone()), v.bind(rt)))
+    }
+
+    fn svd<Q, O>(
+        self,
+        set: Q,
+        us_leg: <Self::Mapper as AxisMapper>::Id,
+        sv_leg: <Self::Mapper as AxisMapper>::Id,
+        option: O,
+    ) -> Result<
+        (
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::U,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::S,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+            BoundTensor<
+                <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                    Self::Repr,
+                >>::V,
+                Self::Mapper,
+                Self::Runtime,
+            >,
+        ),
+        RuntimeError<
+            SplittyError<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            <<Self::Runtime as SvdWithOptionRuntime<Self::Repr, O>>::Ctx as SvdCtxImpl<
+                Self::Repr,
+            >>::Err,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
+        Self::Runtime: SvdWithOptionRuntime<Self::Repr, O>,
+    {
+        self.svd_with_more_ids(set, us_leg.clone(), us_leg, sv_leg.clone(), sv_leg, option)
     }
 }

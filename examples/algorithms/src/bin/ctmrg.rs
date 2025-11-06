@@ -3,9 +3,7 @@ use tensory_basic::{
     id::{Id128, Prime},
     mapper::VecMapper,
 };
-use tensory_core::leg;
-use tensory_core::repr::TensorRepr;
-use tensory_core::{args::_from_array_pair, tensor::TensorTask};
+use tensory_core::prelude::*;
 use tensory_linalg::svd::TensorSvdExt;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 
@@ -30,8 +28,8 @@ fn main() -> anyhow::Result<()> {
     let mut er: Leg = Leg::new();
     let mut ea: Leg = Leg::new();
 
-    let mut a = Tensor::zero(leg![l=> 2, t=> 2, r=> 2, b=> 2]).unwrap();
-    let mut spin_a = Tensor::zero(leg![l=> 2, t=> 2, r=> 2, b=> 2]).unwrap();
+    let mut a = Tensor::zero(lm![l=> 2, t=> 2, r=> 2, b=> 2]).unwrap();
+    let mut spin_a = Tensor::zero(lm![l=> 2, t=> 2, r=> 2, b=> 2]).unwrap();
     for l_i in 0..2 {
         let l_is = (l_i as f64 - 0.5) * 2.0;
         for t_i in 0..2 {
@@ -41,14 +39,14 @@ fn main() -> anyhow::Result<()> {
                 for b_i in 0..2 {
                     let b_is = (b_i as f64 - 0.5) * 2.0;
 
-                    a[leg![
+                    a[lm![
                         &l=>l_i,
                         &t=>t_i,
                         &r=>r_i,
                         &b=>b_i
                     ]] = 2.0 * ((l_is + t_is + r_is + b_is) * beta).cosh();
                     // impurity tensor
-                    spin_a[leg![
+                    spin_a[lm![
                         &l=>l_i,
                         &t=>t_i,
                         &r=>r_i,
@@ -62,34 +60,34 @@ fn main() -> anyhow::Result<()> {
     // normalization
     let dummy = Leg::new();
     let (u, s, v) = (&a)
-        .svd(leg![&l, &t], dummy, dummy.prime())?
+        .svd(ls![&l, &t], dummy, dummy.prime())?
         .with((MaxIx(4),))?;
-    let factor_initial = s[leg![&dummy=>0,&dummy.prime()=>0]]
-        + s[leg![&dummy=>1,&dummy.prime()=>1]]
-        + s[leg![&dummy=>2,&dummy.prime()=>2]]
-        + s[leg![&dummy=>3,&dummy.prime()=>3]];
+    let factor_initial = s[lm![&dummy=>0,&dummy.prime()=>0]]
+        + s[lm![&dummy=>1,&dummy.prime()=>1]]
+        + s[lm![&dummy=>2,&dummy.prime()=>2]]
+        + s[lm![&dummy=>3,&dummy.prime()=>3]];
 
     // println!("a factor {}", factor_initial);
 
     a = (a / (factor_initial,)).with(())?;
 
-    let mut c = Tensor::zero(leg![el=> 2, er=> 2]).unwrap();
+    let mut c = Tensor::zero(lm![el=> 2, er=> 2]).unwrap();
 
     for el_i in 0..2 {
         let el_is = (el_i as f64 - 0.5) * 2.0;
         for er_i in 0..2 {
             let er_is = (er_i as f64 - 0.5) * 2.0;
             // ferro boundary condition
-            // c[leg![&el=>el_i, &er=>er_i]] = ((el_is + er_is) * beta).exp();
+            // c[lm![&el=>el_i, &er=>er_i]] = ((el_is + er_is) * beta).exp();
             // open boundary condition
-            c[leg![&el=>el_i, &er=>er_i]] = 2.0 * ((el_is + er_is) * beta).cosh();
+            c[lm![&el=>el_i, &er=>er_i]] = 2.0 * ((el_is + er_is) * beta).cosh();
         }
     }
 
     //normalization
     c = (c / (factor_initial,)).with(())?;
 
-    let mut etn = Tensor::zero(leg![el=> 2, er=> 2, ea=>2]).unwrap();
+    let mut etn = Tensor::zero(lm![el=> 2, er=> 2, ea=>2]).unwrap();
     for el_i in 0..2 {
         let el_is = (el_i as f64 - 0.5) * 2.0;
         for er_i in 0..2 {
@@ -97,9 +95,9 @@ fn main() -> anyhow::Result<()> {
             for ea_i in 0..2 {
                 let ea_is = (ea_i as f64 - 0.5) * 2.0;
                 // ferro boundary condition
-                // etn[leg![&el=>el_i, &er=>er_i, &ea=>ea_i]] = ((el_is + er_is + ea_is) * beta).exp();
+                // etn[lm![&el=>el_i, &er=>er_i, &ea=>ea_i]] = ((el_is + er_is + ea_is) * beta).exp();
                 // open boundary condition
-                etn[leg![&el=>el_i, &er=>er_i, &ea=>ea_i]] =
+                etn[lm![&el=>el_i, &er=>er_i, &ea=>ea_i]] =
                     2.0 * ((el_is + er_is + ea_is) * beta).cosh();
             }
         }
@@ -110,8 +108,8 @@ fn main() -> anyhow::Result<()> {
 
     // normalization
     // let dummy = Leg::new();
-    // let (u, s, v) = (&c).view().svd(leg![&el], dummy, dummy.prime())?.with((MaxIx(1),))?;
-    // let factor = s[leg![&dummy=>0,&dummy.prime()=>0]];
+    // let (u, s, v) = (&c).view().svd(ls![&el], dummy, dummy.prime())?.with((MaxIx(1),))?;
+    // let factor = s[ls![&dummy=>0,&dummy.prime()=>0]];
     // println!("initial factor {}", factor);
 
     // c = (c / (factor,)).with(())?;
@@ -125,43 +123,43 @@ fn main() -> anyhow::Result<()> {
         // std::println!("order c {}", c.repr().naxes());
         // std::println!("order et {}", etn.repr().naxes());
 
-        let ec = (&etn * &c.replace_leg(leg![&er => er.prime()]).unwrap())?.with(())?;
+        let ec = (&etn * &c.replace_leg(lm![&er => er.prime()]).unwrap())?.with(())?;
         let ece = (&ec
-            .replace_leg(leg![&er => er.prime().prime(), &er.prime() => er, &ea => ea.prime()])
+            .replace_leg(lm![&er => er.prime().prime(), &er.prime() => er, &ea => ea.prime()])
             .unwrap()
             * &etn)?
             .with(())?;
-        let mat = (&ece.replace_leg(leg![&ea => l, &ea.prime() => t]).unwrap() * &a)?.with(())?;
+        let mat = (&ece.replace_leg(lm![&ea => l, &ea.prime() => t]).unwrap() * &a)?.with(())?;
 
         let el_new = Leg::new();
         let (u, s, v) = (&mat)
             .view()
-            .svd(leg![&el, &b], el_new, el_new.prime())?
+            .svd(ls![&el, &b], el_new, el_new.prime())?
             .with((MaxIx(d),))?;
 
         c = (&((&mat * &u)?.with(())?)
-            .replace_leg(leg![&er.prime().prime() => el, &r => b, &el_new => el_new.prime()])
+            .replace_leg(lm![&er.prime().prime() => el, &r => b, &el_new => el_new.prime()])
             .unwrap()
             * &u)?
             .with(())?;
         etn = (&((&((&etn * &u)?.with(())?)
-            .replace_leg(leg![&b => l, &ea => t])
+            .replace_leg(lm![&b => l, &ea => t])
             .unwrap()
             * &a)?
             .with(())?)
-        .replace_leg(leg![
+        .replace_leg(lm![
         &er => el,
         &b => ea,
         &r => b
         ])
         .unwrap()
-            * &u.replace_leg(leg![&el_new => el_new.prime()]).unwrap())?
+            * &u.replace_leg(lm![&el_new => el_new.prime()]).unwrap())?
             .with(())?;
 
         el = el_new;
         er = el_new.prime();
 
-        let factor = s[leg![&el_new=>0,&el_new.prime()=>0]];
+        let factor = s[lm![&el_new=>0,&el_new.prime()=>0]];
         //println!("factor at {}, {}", _rgstep, factor);
 
         c = (c / (factor,)).with(())?;
@@ -172,11 +170,11 @@ fn main() -> anyhow::Result<()> {
         e_factors.push(e_factor_sum);
 
         let cp = c.clone();
-        let c2 = (&c * &cp.replace_leg(leg![&el => el.prime(), &er => el]).unwrap())?.with(())?;
+        let c2 = (&c * &cp.replace_leg(lm![&el => el.prime(), &er => el]).unwrap())?.with(())?;
         let c4 = (&c2 * &c2)?.with(())?;
 
         let L1 = 2 * (_rgstep + 2);
-        let sum_f = c4[_from_array_pair([], [])];
+        let sum_f = c4[lm![]];
 
         let factors_sum: f64 = factors.iter().sum();
         let e_factors_sum: f64 = e_factors.iter().sum();

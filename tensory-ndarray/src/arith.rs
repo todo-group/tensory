@@ -246,7 +246,7 @@ mod tests {
     use std::println;
 
     use num_traits::abs;
-    use tensory_core::{leg, tensor::TensorTask};
+    use tensory_core::prelude::*;
 
     use crate::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
 
@@ -273,8 +273,8 @@ mod tests {
         let c = Leg::new();
         let d = Leg::new();
 
-        let ta = Tensor::random(leg![a => a_n, b => b_n, c => c_n, d => d_n]).unwrap();
-        let tb = Tensor::random(leg![b => b_n, c => c_n, d => d_n, a => a_n]).unwrap();
+        let ta = Tensor::random(lm![a => a_n, b => b_n, c => c_n, d => d_n]).unwrap();
+        let tb = Tensor::random(lm![b => b_n, c => c_n, d => d_n, a => a_n]).unwrap();
 
         let alv = ta.mapper();
         let blv = tb.mapper();
@@ -297,9 +297,9 @@ mod tests {
             for bi in 0..4 {
                 for ci in 0..5 {
                     for di in 0..6 {
-                        let tc_e = ta.get(leg![&a=>ai, &b=>bi, &c=>ci, &d=>di])??
-                            + tb.get(leg![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
-                        let tc_r = tc.get(leg![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
+                        let tc_e = ta.get(lm![&a=>ai, &b=>bi, &c=>ci, &d=>di])??
+                            + tb.get(lm![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
+                        let tc_r = tc.get(lm![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
                         //tcd[[ai, bi, ci, di]];
                         println!("{},{},{},{} : {} vs {}", ai, bi, ci, di, tc_e, tc_r);
                         assert!(abs(tc_e - tc_r) < EPS);
@@ -327,8 +327,8 @@ mod tests {
         let i = Leg::new();
         let j = Leg::new();
 
-        let ta = Tensor::random(leg![a => a_n, i => i_n, b => b_n, j => j_n]).unwrap();
-        let tb = Tensor::random(leg![j => j_n, c => c_n, d => d_n, i => i_n]).unwrap();
+        let ta = Tensor::random(lm![a => a_n, i => i_n, b => b_n, j => j_n]).unwrap();
+        let tb = Tensor::random(lm![j => j_n, c => c_n, d => d_n, i => i_n]).unwrap();
 
         let nd = NdRuntime;
 
@@ -371,11 +371,11 @@ mod tests {
                         let mut tc_e = 0.0;
                         for ii in 0..7 {
                             for ji in 0..8 {
-                                tc_e += ta.get(leg![&a=>ai, &i=>ii, &b=>bi, &j=>ji])??
-                                    * tb.get(leg![&j=>ji, &c=>ci, &d=>di, &i=>ii])??;
+                                tc_e += ta.get(lm![&a=>ai, &i=>ii, &b=>bi, &j=>ji])??
+                                    * tb.get(lm![&j=>ji, &c=>ci, &d=>di, &i=>ii])??;
                             }
                         }
-                        let tc_r = tc.get(leg![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
+                        let tc_r = tc.get(lm![&a=>ai, &b=>bi, &c=>ci, &d=>di])??;
                         //tcd[[ai, bi, ci, di]];
                         println!("{},{},{},{} : {} vs {}", ai, bi, ci, di, tc_e, tc_r);
                         assert!(abs(tc_e - tc_r) < EPS);

@@ -947,6 +947,7 @@ dependencies = [
  "tensory-basic",
  "tensory-core",
  "tensory-linalg",
+ "thiserror",
 ]
 
 [[package]]
