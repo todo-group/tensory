@@ -7,6 +7,58 @@ use crate::{
     tensor::Tensor,
 };
 
+// pub trait ElemGetCtxImpl<A: TensorRepr> {
+//     type Index;
+//     type E;
+//     type Err;
+//     unsafe fn get_unchecked<'a>(
+//         &mut self,
+//         a: &'a A,
+//         indices: Vec<Self::Index>,
+//     ) -> Result<&'a Self::E, Self::Err>;
+// }
+// pub trait ElemGetCtx<A: TensorRepr>: ElemGetCtxImpl<A> {
+//     fn get<'a>(&mut self, a: &'a A, indices: Vec<Self::Index>) -> Result<&'a Self::E, Self::Err>;
+// }
+// impl<C: ElemGetCtxImpl<A>, A: TensorRepr> ElemGetCtx<A> for C {
+//     fn get<'a>(&mut self, a: &'a A, indices: Vec<Self::Index>) -> Result<&'a Self::E, Self::Err> {
+//         if indices.len() != a.naxes() {
+//             panic!("number of indices does not match number of axes");
+//         }
+//         unsafe { self.get_unchecked(a, indices) }
+//     }
+// }
+
+// pub trait ElemGetMutCtxImpl<A: TensorRepr> {
+//     type Index;
+//     type E;
+//     type Err;
+//     unsafe fn get_mut_unchecked<'a>(
+//         &mut self,
+//         a: &'a mut A,
+//         indices: Vec<Self::Index>,
+//     ) -> Result<&'a mut Self::E, Self::Err>;
+// }
+// pub trait ElemGetMutCtx<A: TensorRepr>: ElemGetMutCtxImpl<A> {
+//     fn get_mut<'a>(
+//         &mut self,
+//         a: &'a mut A,
+//         indices: Vec<Self::Index>,
+//     ) -> Result<&'a mut Self::E, Self::Err>;
+// }
+// impl<C: ElemGetMutCtxImpl<A>, A: TensorRepr> ElemGetMutCtx<A> for C {
+//     fn get_mut<'a>(
+//         &mut self,
+//         a: &'a mut A,
+//         indices: Vec<Self::Index>,
+//     ) -> Result<&'a mut Self::E, Self::Err> {
+//         if indices.len() != a.naxes() {
+//             panic!("number of indices does not match number of axes");
+//         }
+//         unsafe { self.get_mut_unchecked(a, indices) }
+//     }
+// }
+
 /// Tensor representation providing immutable element access, WITHOUT checking the number of indices.
 pub trait ElemGetReprImpl: TensorRepr {
     type Index;

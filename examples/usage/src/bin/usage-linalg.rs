@@ -105,7 +105,7 @@ fn main() -> anyhow::Result<()> {
         )?; // [a,a',b,b']
         let (v, d) = (&t)
             .solve_eig(ls![(&a, &a.prime()), (&b, &b.prime())], e, f)?
-            .with(())?; // v:[a,a',e], d:[e,f]
+            .with(())?; // v:[a,b,e], d:[e,f]
         let t_v = (
             &t * (&v).replace_leg(lm![&a=>a.prime(),&b=>b.prime(),&e=>f])?
             // [a',b',f]

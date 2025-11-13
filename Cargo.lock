@@ -955,7 +955,9 @@ name = "tensory-normalized"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "ndarray-linalg",
  "num-complex",
+ "num-traits",
  "tensory-basic",
  "tensory-core",
  "tensory-linalg",
@@ -1023,6 +1025,7 @@ name = "usage"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "itertools",
  "num-complex",
  "rand",
  "tensory-basic",

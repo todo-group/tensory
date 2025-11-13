@@ -15,3 +15,5 @@ tensory-basic = { workspace = true }
 tensory-ndarray = { workspace = true }
 num-complex = { workspace = true }
 anyhow = { workspace = true }
+num-traits = { workspace = true }
+ndarray-linalg = { workspace = true }

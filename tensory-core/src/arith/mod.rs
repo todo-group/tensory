@@ -68,4 +68,7 @@ impl TensorScalar for usize {}
 //impl TensorScalar for f16 {}
 impl TensorScalar for f32 {}
 impl TensorScalar for f64 {}
+// impl TensorScalar for Complex<f32> {}
+// impl TensorScalar for Complex<f64> {}
+
 //impl TensorScalar for f128 {}

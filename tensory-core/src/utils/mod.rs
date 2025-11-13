@@ -3,3 +3,5 @@
 pub mod elem_get;
 
 pub mod axis_info;
+
+pub mod ewise;

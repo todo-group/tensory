@@ -11,3 +11,4 @@ tensory-ndarray = { workspace = true }
 anyhow = { workspace = true }
 num-complex = { workspace = true }
 rand = { workspace = true, features = ["small_rng"] }
+itertools = { workspace = true }

@@ -1,4 +1,8 @@
-use crate::{mapper::TranslateMapper, repr::TensorRepr, tensor::Tensor};
+use crate::{
+    mapper::{AxisMapper, TranslateMapper},
+    repr::TensorRepr,
+    tensor::Tensor,
+};
 
 /// Tensor representation providing the information of each axis, WITHOUT checking bounds.
 pub trait AxisInfoReprImpl: TensorRepr {
@@ -24,8 +28,10 @@ impl<T: AxisInfoReprImpl> AxisInfoRepr for T {
     }
 }
 
-// impl<A: AxisInfoReprImpl, M: TranslateMapper> Tensor<A, M> {
-//     fn axis_info(&self, leg: M::Id) -> Self::AxisInfo {
+// impl<A: AxisInfoReprImpl, Id, M: AxisMapper<Id = Id> + TranslateMapper<Id>> Tensor<A, M> {
+//     fn axis_info(&self, leg: M::Id) -> A::AxisInfo {
+//         let i = self.mapper().translate(leg);
+
 //         if i >= self.naxes() {
 //             panic!("dim not match")
 //         }

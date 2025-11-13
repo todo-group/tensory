@@ -15,6 +15,9 @@ pub mod norm;
 
 pub mod conj;
 
+pub mod exp;
+pub mod pow;
+
 pub mod solve_eig;
 // you can add your own traits as we defined!
 
