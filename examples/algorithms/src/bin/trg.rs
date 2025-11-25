@@ -3,7 +3,7 @@ use tensory_basic::{
     mapper::VecMapper,
 };
 use tensory_core::prelude::*;
-use tensory_linalg::{norm::TensorNormExt, svd::TensorSvdExt};
+use tensory_linalg::prelude::*;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
 
 type Leg = Prime<Id128>;

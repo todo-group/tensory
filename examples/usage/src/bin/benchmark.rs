@@ -12,7 +12,7 @@ use std::{
 use itertools::{Itertools, min};
 use rand::{SeedableRng, rngs::SmallRng};
 use tensory_basic::mapper::VecMapper;
-use tensory_linalg::svd::TensorSvdExt;
+use tensory_linalg::prelude::*;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt};
 
 use tensory_core::prelude::*;

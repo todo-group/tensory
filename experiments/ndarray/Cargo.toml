@@ -12,5 +12,6 @@ ndarray = { workspace = true }
 ndarray-linalg = { workspace = true }
 num-traits = { workspace = true }
 blas-src = { workspace = true, features = ["accelerate"] }
-openblas-src = { workspace = true, features = ["cblas"] }
+# openblas-src = { workspace = true, features = ["cblas"] }
+rand = { workspace = true, features = ["small_rng"] }
 

@@ -5,10 +5,7 @@ use tensory_basic::{
     mapper::VecMapper,
 };
 use tensory_core::prelude::*;
-use tensory_linalg::{
-    conj::TensorConjExt, eig::TensorEigExt, norm::TensorNormExt, qr::TensorQrExt,
-    solve_eig::TensorSolveEigExt, svd::TensorSvdExt,
-};
+use tensory_linalg::prelude::*;
 use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, linalg::HermiteEig};
 
 // type aliases for convenience. You can change them to other implementations.

@@ -1,6 +1,7 @@
 use ndarray::{Array1, Array2};
-use ndarray_linalg::{JobSvd, SVD, SVDDC, random};
+use ndarray_linalg::{JobSvd, SVD, SVDDC, random, random_using};
 use num_traits::ToPrimitive;
+use rand::{SeedableRng, rngs::SmallRng};
 use std::{
     hint::black_box,
     time::{Duration, Instant},
@@ -16,9 +17,11 @@ fn measure_svd_time(
 ) -> f64 {
     let mut total_time = Duration::ZERO;
 
+    let mut rng = SmallRng::seed_from_u64(0);
+
     for _ in 0..trials {
         // Create random matrix
-        let x: Array2<f64> = random([h, w]);
+        let x: Array2<f64> = random_using([h, w], &mut rng);
 
         let pre = Instant::now();
 

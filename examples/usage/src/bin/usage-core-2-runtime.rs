@@ -1,19 +1,31 @@
-use std::f64::consts::PI;
-use tensory_basic::mapper::VecMapper;
+use num_complex::Complex;
+
+use std::{
+    f64::consts::PI,
+    hint::black_box,
+    time::{Duration, Instant},
+};
+
+use rand::{SeedableRng, rngs::SmallRng};
+use tensory_basic::{
+    id::{Id128, Prime},
+    mapper::VecMapper,
+};
+
 use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt};
-
-#[allow(unused_imports)]
-use rand::{SeedableRng, rngs::SmallRng};
+use tensory_ndarray::{
+    NdDenseTensor, NdDenseTensorExt, NdRuntime,
+    cut_filter::{Cutoff, MaxIx},
+};
 
 // type aliases for convenience. You can change them to other implementations.
 type Tensor<'a, E> = NdDenseTensor<E, VecMapper<&'a str>>;
 
 fn main() -> anyhow::Result<()> {
-    // in this example, we provide a simplest usage of tensory for understanding the basic schema of tensory operations.
+    // in this example, we provide a usage of bound tensor.
 
-    // we code a simplest example usage of tensory as follows:
+    // again, we code a simplest example usage of tensory as follows:
     // t := <random tensor with legs a,b,c,d>
     // t_mul_pi := t * pi
     // t_mul_pi_div_pi := t_mul_pi / pi
@@ -29,19 +41,17 @@ fn main() -> anyhow::Result<()> {
     // here we create a random tensor `t` with legs a,b,c,d.
     let t = Tensor::<f64>::random(lm!["a"=>a_n, "b"=>b_n, "c"=>c_n, "d"=>d_n])?;
 
-    // `lm!` is a macro to build leg-maps: some value is bound with leg ID.
-    // here we pass leg IDs as &'static str and their sizes as usize.
-    // so this constructor builds a random tensor with legs "a", "b", "c", "d" and their sizes a_n, b_n, c_n, d_n respectively.
-
-    // alternatively, you can use `Tensor::random_using` to use fast and seedable random number generator (RNG) for speed and reproducibility. you will notice the slowness of the default RNG by commenting out the line above and uncommenting the following lines.
-    // let mut rng = SmallRng::seed_from_u64(0);
-    // let t = Tensor::<f64>::random_using(lm!["a"=>a_n, "b"=>b_n, "c"=>c_n, "d"=>d_n], &mut rng)?;
+    // here's the new point: we bind the tensor `t` to NdRuntime to obtain a bound tensor.
+    // "bound" means that the tensor is associated with a specific runtime context for computation.
+    let t = t.bind(NdRuntime);
 
     // here we perform scalar multiplication and division.
-    let t_mul_pi = (t.clone() * PI).with(())?; // ... (X) remember here we use t.clone()
-    let t_mul_pi_div_pi = (t_mul_pi / PI).exec()?;
+    let t_mul_pi = (t.clone() * PI)?; // ... (X) remember here we use t.clone()
+    let t_mul_pi_div_pi = (t_mul_pi / PI)?;
 
-    // as you can see, the the direct result of the `*` and `/` operation is not a tensor, but a middle task struct.
+    // as you can see, the the direct result of the `*` and `/` operation is already a bound tensor.
+    // this is
+
     // in this case, it is TensorRightScalarMul and TensorRightScalarDiv respectively.
     // the task building is lazy. the actual computation is performed when we call `.with(ctx)` method.
     // `ctx` implements the required context trait for the operation. so you can switch different contexts to change the computation strategy.
@@ -50,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     // they are considered default context. you can use `.exec()` method instead as a syntax sugar, as the second line.
 
     // here we perform subtraction to compute the difference between `t` and `t_mul_pi_div_pi`.
-    let t_diff = (&t_mul_pi_div_pi - &t)?.exec()?;
+    let t_diff = (&t_mul_pi_div_pi - &t)?;
 
     // you will notice that we use `&t` and `&t_mul_pi_div_pi` here, instead of `t` and `t_mul_pi_div_pi`.
     // actually, this is a syntax suger for:
@@ -66,7 +76,7 @@ fn main() -> anyhow::Result<()> {
     // finally, we compute and print the norm of the difference, and normalize it by the norm of `t`.
     println!(
         "relative error (A ?= A * pi / pi): {}",
-        (&t_diff).norm().exec()? / (&t).norm().exec()?
+        (&t_diff).norm()? / (&t).norm()?
     );
 
     // again, we use `&t_diff` and `&t` to borrow the tensors for norm computation.

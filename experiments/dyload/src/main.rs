@@ -1,22 +1,26 @@
+mod blas;
+
 use anyhow::anyhow;
 use std::ffi::{CStr, c_char, c_double, c_int};
 
+use crate::blas::DgemmFn;
+
 // from openblas-sys
-type DgemmFn = unsafe extern "C" fn(
-    transa: *const c_char,
-    transb: *const c_char,
-    m: *const c_int,
-    n: *const c_int,
-    k: *const c_int,
-    alpha: *const c_double,
-    a: *const c_double,
-    lda: *const c_int,
-    b: *const c_double,
-    ldb: *const c_int,
-    beta: *const c_double,
-    c: *mut c_double,
-    ldc: *const c_int,
-);
+// type DgemmFn = unsafe extern "C" fn(
+//     transa: *const c_char,
+//     transb: *const c_char,
+//     m: *const c_int,
+//     n: *const c_int,
+//     k: *const c_int,
+//     alpha: *const c_double,
+//     a: *const c_double,
+//     lda: *const c_int,
+//     b: *const c_double,
+//     ldb: *const c_int,
+//     beta: *const c_double,
+//     c: *mut c_double,
+//     ldc: *const c_int,
+// );
 
 type GetConfigFn = unsafe extern "C" fn() -> *const c_char;
 

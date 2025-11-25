@@ -1,6 +1,7 @@
 //! Core crate of tensory.
 
 #![warn(missing_docs)]
+#![allow(clippy::type_complexity)]
 #![no_std]
 extern crate alloc;
 #[cfg(test)]
@@ -29,4 +30,17 @@ pub mod utils;
 
 pub mod args;
 
-pub mod prelude;
+pub mod veccy;
+
+pub mod prelude {
+    //! A prelude module re-exporting commonly used items.
+
+    pub use crate::bound_tensor::*;
+    pub use crate::mapper::*;
+    pub use crate::repr::*;
+    pub use crate::tensor::*;
+
+    pub use crate::leg;
+    pub use crate::lm;
+    pub use crate::ls;
+}
