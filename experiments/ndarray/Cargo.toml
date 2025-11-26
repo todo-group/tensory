@@ -15,3 +15,5 @@ num-traits = { workspace = true }
 lin-dev-deps = { workspace = true }
 rand = { workspace = true, features = ["small_rng"] }
 
+[build-dependencies]
+lin-dev-deps-build = { workspace = true }

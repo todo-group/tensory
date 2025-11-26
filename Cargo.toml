@@ -5,14 +5,15 @@ members = [
     "tensory-linalg",
     "tensory-ndarray",
     "tensory-basic",
+    "tensory-normalized",
 
     # test deps
-    "lin-dev-deps",
+    "lin-dev-deps","lin-dev-deps-build",
     # internal
     "examples/*",
     # "benches"
-    "experiments/*"
-, "tensory-normalized"]
+    "experiments/*",
+]
 exclude= [
     "experiments/numpy"
 ]
@@ -32,6 +33,7 @@ tensory-linalg = { path = "tensory-linalg" }
 tensory-ndarray = { path = "tensory-ndarray" }
 
 lin-dev-deps = { path = "lin-dev-deps" }
+lin-dev-deps-build = { path = "lin-dev-deps-build" }
 
 thiserror = "2.0.16"
 anyhow = "1.0.99"

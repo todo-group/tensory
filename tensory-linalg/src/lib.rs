@@ -46,7 +46,7 @@ pub mod prelude {
     // pub use crate::lu::BoundTensorLuExt;
     pub use crate::norm::BoundTensorNormExt;
     // pub use crate::pow::BoundTensorPowExt;
-    pub use crate::qr::BoundTensorQrExt;
+    // pub use crate::qr::BoundTensorQrExt;
     // pub use crate::solve_eig::BoundTensorSolveEigExt;
     pub use crate::svd::BoundTensorSvdExt;
 }

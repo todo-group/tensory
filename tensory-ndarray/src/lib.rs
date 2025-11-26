@@ -572,3 +572,6 @@ impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct NdRuntime;
 unsafe impl Runtime for NdRuntime {}
+
+#[cfg(all(test, not(feature = "__test-build")))]
+compile_error!("test build requires __test-build feature to be enabled for lin-dev-deps");

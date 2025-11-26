@@ -18,9 +18,17 @@ rand = { workspace = true }
 itertools = { workspace = true }
 thiserror = { workspace = true }
 
+lin-dev-deps = { workspace = true, optional = true }
+
 [dev-dependencies]
 tensory-basic = { workspace = true }
 num-complex = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
-lin-dev-deps = { workspace = true }
+
+
+[build-dependencies]
+lin-dev-deps-build = { workspace = true }
+
+[features]
+__test-build = [ "lin-dev-deps" ]

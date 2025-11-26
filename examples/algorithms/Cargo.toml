@@ -13,3 +13,6 @@ lin-dev-deps = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 num-complex = { workspace = true }
+
+[build-dependencies]
+lin-dev-deps-build = { workspace = true }
