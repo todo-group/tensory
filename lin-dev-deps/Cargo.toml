@@ -15,7 +15,7 @@ openblas-src = { version = "*", features = [ "system" ] }
 # blas-src = { workspace = true, features = [ "accelerate" ] }
 # # accelerate-src is not needed since no option
 
-# blas-src = { workspace = true, features = [ "intenl-mkl" ] }
+# blas-src = { workspace = true, features = [ "intel-mkl" ] }
 # intel-mkl-src = { version = "*" ,features = ["dynamic","lp64","iomp"] }
 
 # blas-src = { workspace = true, features = [ "blis" ] }
