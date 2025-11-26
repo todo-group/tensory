@@ -6,10 +6,11 @@ members = [
     "tensory-ndarray",
     "tensory-basic",
 
+    # test deps
+    "lin-dev-deps",
     # internal
     "examples/*",
     # "benches"
-
     "experiments/*"
 , "tensory-normalized"]
 exclude= [
@@ -30,6 +31,8 @@ tensory-basic = { path = "tensory-basic" }
 tensory-linalg = { path = "tensory-linalg" }
 tensory-ndarray = { path = "tensory-ndarray" }
 
+lin-dev-deps = { path = "lin-dev-deps" }
+
 thiserror = "2.0.16"
 anyhow = "1.0.99"
 
@@ -41,7 +44,8 @@ num-traits = "0.2.19"
 ndarray = "0.17.1"
 ndarray-linalg = { version = "0.18.0" }
 blas-src = { version = "0.14" }
-openblas-src = { version = "0.10", features = [ "system"] }
+openblas-src = { version = "0.10", features = [ "system" ] }
+intel-mkl-src = { version = "0.8.1" }
 
 libloading = "0.8.8"
 pkg-config = "0.3.32"
@@ -52,3 +56,7 @@ bimap = "0.6.3"
 rand = "0.8.3"
 
 itertools = "0.14.0"
+
+[patch.crates-io]
+blas-src = { git = "https://github.com/JyJyJcr/blas-src.git", branch = "thin-mkl" }
+intel-mkl-src = { git = "https://github.com/JyJyJcr/intel-mkl-src.git", branch = "pkg-config" }

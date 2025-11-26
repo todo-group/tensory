@@ -14,6 +14,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "lin-dev-deps",
  "num-complex",
  "tensory-basic",
  "tensory-core",
@@ -66,8 +67,7 @@ checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
 [[package]]
 name = "blas-src"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bd439b48f5425c9f4597141b52476358e05e08471bc30f4d1c2a1f4084d7c9f"
+source = "git+https://github.com/JyJyJcr/blas-src.git?branch=thin-mkl#74dfc25b9c67b54c11ab2d83124324905f0aa164"
 dependencies = [
  "accelerate-src",
 ]
@@ -277,6 +277,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lin-dev-deps"
+version = "0.2.0"
+dependencies = [
+ "blas-src",
+]
+
+[[package]]
 name = "log"
 version = "0.4.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -333,6 +340,7 @@ dependencies = [
  "anyhow",
  "blas-src",
  "chrono",
+ "lin-dev-deps",
  "ndarray",
  "ndarray-linalg",
  "num-complex",
@@ -541,6 +549,7 @@ dependencies = [
  "blas-src",
  "chrono",
  "itertools",
+ "lin-dev-deps",
  "ndarray",
  "ndarray-linalg",
  "num-complex",
@@ -598,6 +607,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "itertools",
+ "lin-dev-deps",
  "num-complex",
  "rand",
  "tensory-basic",
@@ -847,3 +857,8 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[patch.unused]]
+name = "intel-mkl-src"
+version = "0.8.1"
+source = "git+https://github.com/JyJyJcr/intel-mkl-src.git?branch=pkg-config#a0953d132833286aaaed6c148c533ed2169bdc0f"

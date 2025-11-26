@@ -8,6 +8,8 @@ tensory-core = { workspace = true }
 tensory-basic = { workspace = true }
 tensory-linalg = { workspace = true }
 tensory-ndarray = { workspace = true }
+lin-dev-deps = { workspace = true }
+
 anyhow = { workspace = true }
 chrono = { workspace = true }
 num-complex = { workspace = true }

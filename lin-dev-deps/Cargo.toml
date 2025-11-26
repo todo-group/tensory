@@ -1,0 +1,14 @@
+[package]
+name = "lin-dev-deps"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+blas-src = { workspace = true, features = ["accelerate"] }
+
+# blas-src = { workspace = true, features = ["openblas"] }
+# openblas-src = { workspace = true }
+
