@@ -1,5 +1,7 @@
+#[cfg(feature = "__test-build")]
 fn main() {
-    if cfg!(feature = "__test-build") {
-        lin_dev_deps_build::build();
-    }
+    lin_dev_deps_build::build();
 }
+
+#[cfg(not(feature = "__test-build"))]
+fn main() {}

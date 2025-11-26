@@ -28,7 +28,7 @@ chrono = { workspace = true }
 
 
 [build-dependencies]
-lin-dev-deps-build = { workspace = true }
+lin-dev-deps-build = { workspace = true, optional = true }
 
 [features]
-__test-build = [ "lin-dev-deps" ]
+__test-build = [ "lin-dev-deps", "lin-dev-deps-build" ]

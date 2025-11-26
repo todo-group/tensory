@@ -1,5 +1,5 @@
 use ndarray::{Array1, Array2};
-use ndarray_linalg::{JobSvd, SVD, SVDDC, random, random_using};
+use ndarray_linalg::{JobSvd, SVD, SVDDC, TruncatedOrder, TruncatedSvd, random_using};
 use num_traits::ToPrimitive;
 use rand::{SeedableRng, rngs::SmallRng};
 use std::{
@@ -49,6 +49,15 @@ fn compare_svd(h: usize, w: usize, trials: usize) {
 
     let sdd_full = measure_svd_time(h, w, trials, |x| x.svddc(JobSvd::All).unwrap());
     println!("SDD Full took {:.4} seconds", sdd_full);
+
+    let tsvd = measure_svd_time(h, w, trials, |x| {
+        let (u, d, v) = TruncatedSvd::new(x, TruncatedOrder::Largest)
+            .decompose(5)
+            .unwrap()
+            .values_vectors();
+        (Some(u), d, Some(v))
+    });
+    println!("Truncated SVD took {:.4} seconds", tsvd);
 
     println!();
 }

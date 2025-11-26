@@ -20,7 +20,22 @@
           (pkgs.rust-bin.stable.latest.default.override {
             extensions = [ "rust-src" ];
           })
+          # for openblas
           pkgs.openblas
+
+          # for blis (not checked yet)
+          # pkgs.blis
+
+          # for netlib
+          # pkgs.gfortran
+          # pkgs.gfortran.cc
+          # pkgs.blas-reference
+          # pkgs.lapack-reference
+
+          # for R
+          # pkgs.R
+          # pkgs.libintl
+
           pkgs.pkg-config
           pkgs.uv
           pkgs.python313

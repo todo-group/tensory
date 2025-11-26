@@ -1,0 +1,11 @@
+400 x 400 matrix SVD comparison over 100 trials:
+SVD Full took 0.2454 seconds
+SDD Thin took 0.2129 seconds
+SDD Full took 0.2117 seconds
+Truncated SVD took 0.1512 seconds
+
+200 x 3000 matrix SVD comparison over 100 trials:
+SVD Full took 3.9923 seconds
+SDD Thin took 0.3588 seconds
+SDD Full took 3.9851 seconds
+Truncated SVD took 0.5977 seconds
