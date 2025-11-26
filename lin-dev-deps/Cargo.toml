@@ -9,13 +9,11 @@ license.workspace = true
 links = "linalg-backend"
 
 [dependencies]
-# blas-src = { workspace = true, features = ["accelerate"] }
-
-# blas-src = { workspace = true, features = ["openblas"] }
-# openblas-src = { workspace = true, features = ["cblas"] }
-
-blas-src = { workspace = true, features = ["intel-mkl"] }
-#intel-mkl-src = { version = "0.8.1" }
-intel-mkl-src = { version = "0.8.1" ,features = ["dynamic","lp64","iomp"] }
+blas-src = { workspace = true, features = [
+    "openblas"
+    # "accelerate"
+    # "intel-mkl"
+] }
 
 # openblas-src = { workspace = true, features = ["cblas"] }
+# intel-mkl-src = { version = "0.8.1" ,features = ["dynamic","lp64","iomp"] }
