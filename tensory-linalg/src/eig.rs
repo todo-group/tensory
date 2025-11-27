@@ -168,9 +168,7 @@ impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
         <T::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs
-            .equiv_split(queue)
-            .map_err(|e| SplittyError::Split(e))?;
+        let (grouped, axes_split) = legs.equiv_split(queue).map_err(SplittyError::Split)?;
         let [vc_legs, d_legs, v_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 2],
@@ -180,7 +178,7 @@ impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
                 ],
             ))
         }
-        .map_err(|e| SplittyError::Use(e))?;
+        .map_err(SplittyError::Use)?;
         Ok(TensorEig {
             a: raw,
             v_legs: vc_legs,

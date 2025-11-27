@@ -5,11 +5,13 @@ use alloc::vec::Vec;
 use ndarray::{ArrayBase, IxDyn, OwnedRepr};
 use ndarray_linalg::{Lapack, Norm, Scalar, from_diag};
 use num_traits::ConstZero;
-use tensory_core::mapper::GroupedAxes;
+use tensory_core::mapper::{EquivGroupedAxes, GroupedAxes};
 use tensory_linalg::{
     conj::ConjCtx,
     eig::EigCtxImpl,
+    exp::ExpCtxImpl,
     norm::{NormCtx, NormRuntime},
+    pow::PowCtxImpl,
     qr::QrCtxImpl,
     solve_eig::SolveEigCtxImpl,
     svd::{SvdCtxImpl, SvdWithOptionRuntime},
@@ -18,7 +20,7 @@ use tensory_linalg::{
 use crate::{
     NdDenseRepr, NdDenseViewRepr, NdRuntime,
     cut_filter::CutFilter,
-    tenalg::{conj, error::TenalgError, into_eig, into_eigh, into_qr, into_svddc},
+    tenalg::{conj, diag_map, error::TenalgError, into_eig, into_eigh, into_qr, into_svddc},
 };
 
 unsafe impl<'a, E: Scalar + Lapack, C: CutFilter<<E as Scalar>::Real>>
@@ -231,11 +233,177 @@ unsafe impl<'a, E: Scalar> ConjCtx<NdDenseViewRepr<'a, E>> for () {
     }
 }
 
+pub struct DiagExp;
+
+unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for DiagExp {
+    type Res = NdDenseRepr<E>;
+
+    type Err = TenalgError;
+
+    unsafe fn exp_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        axes_split: EquivGroupedAxes<2>,
+    ) -> Result<Self::Res, Self::Err> {
+        let (_, [l_set, r_set]) = axes_split.into_raw();
+        // lset rset
+
+        let a_raw = a.data;
+        let l_set_len = l_set.len();
+
+        let a_idxv_ordered: Vec<usize> =
+            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+
+        #[cfg(test)]
+        {
+            std::println!("a_rot shape: {:?}", a_rot.shape());
+            std::println!("l_set rset: {:?} {:?}", l_set, r_set);
+        }
+
+        let raw = diag_map(a_rot, l_set_len, |x| *x = x.exp())?;
+        Ok(NdDenseRepr { data: raw })
+    }
+}
+
+pub struct DiagPow;
+pub struct DiagPowF;
+//pub struct DiagPowC;
+
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for DiagPow {
+    type Res = NdDenseRepr<E>;
+
+    type Err = TenalgError;
+
+    unsafe fn pow_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        power: E,
+        axes_split: EquivGroupedAxes<2>,
+    ) -> Result<Self::Res, Self::Err> {
+        let (_, [l_set, r_set]) = axes_split.into_raw();
+        // lset rset
+
+        let a_raw = a.data;
+        let l_set_len = l_set.len();
+
+        let a_idxv_ordered: Vec<usize> =
+            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let raw = diag_map(a_rot, l_set_len, |x| *x = x.pow(power))?;
+        Ok(NdDenseRepr { data: raw })
+    }
+}
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Real> for DiagPowF {
+    type Res = NdDenseRepr<E>;
+
+    type Err = TenalgError;
+
+    unsafe fn pow_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        power: E::Real,
+        axes_split: EquivGroupedAxes<2>,
+    ) -> Result<Self::Res, Self::Err> {
+        let (_, [l_set, r_set]) = axes_split.into_raw();
+        // lset rset
+
+        let a_raw = a.data;
+        let l_set_len = l_set.len();
+
+        let a_idxv_ordered: Vec<usize> =
+            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let raw = diag_map(a_rot, l_set_len, |x| *x = x.powf(power))?;
+        Ok(NdDenseRepr { data: raw })
+    }
+}
+// unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Complex> for DiagPowC {
+//     type Res = NdDenseRepr<E>;
+
+//     type Err = TenalgError;
+
+//     unsafe fn pow_unchecked(
+//         self,
+//         a: NdDenseViewRepr<'a, E>,
+//         power: E::Real,
+//         axes_split: EquivGroupedAxes<2>,
+//     ) -> Result<Self::Res, Self::Err> {
+//         let (_, [l_set, r_set]) = axes_split.into_raw();
+//         // lset rset
+
+//         let a_raw = a.data;
+//         let l_set_len = l_set.len();
+
+//         let a_idxv_ordered: Vec<usize> =
+//             l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+//         let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+//         let raw = diag_map(a_rot, l_set_len, |x| *x = x.powf(power))?;
+//         Ok(NdDenseRepr { data: raw })
+//     }
+// }
+
+pub struct DiagPowI;
+
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for DiagPowI {
+    type Res = NdDenseRepr<E>;
+
+    type Err = TenalgError;
+
+    unsafe fn pow_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        power: i32,
+        axes_split: EquivGroupedAxes<2>,
+    ) -> Result<Self::Res, Self::Err> {
+        let (_, [l_set, r_set]) = axes_split.into_raw();
+        // lset rset
+
+        let a_raw = a.data;
+        let l_set_len = l_set.len();
+
+        let a_idxv_ordered: Vec<usize> =
+            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let raw = diag_map(a_rot, l_set_len, |x| *x = x.powi(power))?;
+        Ok(NdDenseRepr { data: raw })
+    }
+}
+
+pub struct Half;
+
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, Half> for () {
+    type Res = NdDenseRepr<E>;
+
+    type Err = TenalgError;
+
+    unsafe fn pow_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        _power: Half,
+        axes_split: EquivGroupedAxes<2>,
+    ) -> Result<Self::Res, Self::Err> {
+        let (_, [l_set, r_set]) = axes_split.into_raw();
+        // lset rset
+
+        let a_raw = a.data;
+        let l_set_len = l_set.len();
+
+        let a_idxv_ordered: Vec<usize> =
+            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let raw = diag_map(a_rot, l_set_len, |x| *x = x.sqrt())?;
+        Ok(NdDenseRepr { data: raw })
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
     use std::{println, vec};
 
+    use anyhow::Ok;
+    use ndarray::array;
     use ndarray_linalg::Scalar;
     use tensory_basic::{
         id::{Id128, Prime},
@@ -243,10 +411,14 @@ mod tests {
     };
     use tensory_core::prelude::*;
     use tensory_linalg::{
-        eig::TensorEigExt, qr::TensorQrExt, solve_eig::TensorSolveEigExt, svd::TensorSvdExt,
+        eig::TensorEigExt, exp::TensorExpExt, qr::TensorQrExt, solve_eig::TensorSolveEigExt,
+        svd::TensorSvdExt,
     };
 
-    use crate::{NdDenseRepr, NdDenseTensor, NdDenseTensorExt, linalg::HermiteEig};
+    use crate::{
+        NdDenseRepr, NdDenseTensor, NdDenseTensorExt,
+        linalg::{DiagExp, HermiteEig},
+    };
     use tensory_core::tensor::TensorTask;
 
     type Leg = Prime<Id128>;
@@ -550,6 +722,44 @@ mod tests {
                     );
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn tensor_diag_exp_test() -> anyhow::Result<()> {
+        let a = Leg::new();
+        let b = Leg::new();
+        //let c = Leg::new();
+        let a_n = 10;
+        let b_n = 20;
+        //let c_n = 20;
+
+        let mut t = Tensor::zero(lm![a=>a_n, a.prime()=>a_n, b=>b_n, b.prime()=>b_n])?;
+        let t = Tensor::eye(lm![[a,a.prime()]=>a_n, [b,b.prime()]=>b_n])?;
+
+        println!("{:?}", t.repr().data.shape());
+
+        // for ai in 0..a_n {
+        //     for bi in 0..b_n {
+        //         t[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]] = (ai + bi) as f64;
+        //     }
+        // }
+
+        let t_exp = (&t)
+            .exp(ls![(&a, &a.prime()), (&b, &b.prime())])?
+            .with(DiagExp); // diagonal exp
+
+        {
+            let t = Tensor::eye(lm![[a,a.prime()]=>a_n, [b,b.prime()]=>b_n])?; // [a,a',b,b']
+            //let t = Tensor::<f64>::zero(lm![a=>a_n,a.prime()=>a_n,b=>b_n,b.prime()=>b_n])?; // [a,a',b,b']
+
+            println!("{:?}", t.repr());
+
+            let n = (&t)
+                .exp(ls![(&a, &a.prime()), (&b, &b.prime())])?
+                .with(DiagExp)?; // scalar
         }
 
         Ok(())

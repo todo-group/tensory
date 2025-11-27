@@ -397,6 +397,41 @@ where
     Ok((u, eigs))
 }
 
+pub fn diag_map<S: Data, D: Dimension, F: Fn(&mut S::Elem)>(
+    x: ArrayBase<S, D>,
+    left_dim: usize,
+    f: F,
+) -> Result<ArrayD<S::Elem>>
+where
+    S::Elem: Clone,
+{
+    let x_ixs = x.shape();
+    let x_dim = x_ixs.len();
+
+    if x_dim < left_dim {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+    let (left_ixs, right_ixs) = x_ixs.split_at(left_dim);
+    if left_ixs != right_ixs {
+        return Err(ShapeError::from_kind(IncompatibleShape).into());
+    }
+    let full_ix: Ix = right_ixs.iter().product();
+
+    #[cfg(test)]
+    {
+        std::println!("diag_map shape: {:?}", x.shape());
+        std::println!("diag_map shape: {:?}", left_ixs);
+        std::println!("diag_map shape: {:?}", right_ixs);
+        std::println!("diag_map shape: {:?}", full_ix);
+    }
+
+    let mut x_mat = ten_to_mat(&x, [full_ix, full_ix])?;
+    for x_i in x_mat.diag_mut() {
+        f(x_i);
+    }
+    Ok(mat_to_ten(&x_mat, x_ixs)?.into_owned().into_dyn())
+}
+
 #[cfg(test)]
 mod tests {
 

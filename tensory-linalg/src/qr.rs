@@ -2,6 +2,7 @@ use alloc::vec;
 
 use tensory_core::{
     mapper::{AxisMapper, DecompConf, DecompGroupedMapper, GroupMapper, GroupedAxes, SplittyError},
+    prelude::ToBoundTensor,
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
 };
@@ -69,76 +70,103 @@ impl<A: TensorRepr, M: AxisMapper, C: QrCtx<A>> TensorTask<C> for TensorQr<A, M>
     }
 }
 
-pub trait TensorQrExt<A: TensorRepr, M: AxisMapper>: Sized {
-    fn qr_with_more_ids<Q>(
-        self,
-        set: Q,
-        q_qr_leg: M::Id,
-        r_qr_leg: M::Id,
-    ) -> Result<TensorQr<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 2>>::Err>>
-    where
-        M: GroupMapper<2, Q>,
-        M::Grouped: DecompGroupedMapper<2, 2>;
-    fn qr<Q>(
-        self,
-        set: Q,
-        qr_leg: M::Id,
-    ) -> Result<TensorQr<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 2>>::Err>>
-    where
-        M: GroupMapper<2, Q>,
-        M::Grouped: DecompGroupedMapper<2, 2>,
-        M::Id: Clone;
+impl<A: TensorRepr, M: AxisMapper> TensorQr<A, M> {
+    pub unsafe fn from_raw_unchecked(
+        a: A,
+        q_legs: M,
+        r_legs: M,
+        axes_split: GroupedAxes<2>,
+    ) -> Self {
+        TensorQr {
+            a,
+            q_legs,
+            r_legs,
+            axes_split,
+        }
+    }
 }
 
-impl<T: ToTensor> TensorQrExt<T::Repr, T::Mapper> for T {
+pub trait TensorQrExt: ToTensor {
     fn qr_with_more_ids<Q>(
         self,
-        queue: Q,
-        q_qr_leg: <T::Mapper as AxisMapper>::Id,
-        r_qr_leg: <T::Mapper as AxisMapper>::Id,
+        query: Q,
+        q_qr_leg: <Self::Mapper as AxisMapper>::Id,
+        r_qr_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorQr<T::Repr, T::Mapper>,
+        TensorQr<Self::Repr, Self::Mapper>,
         SplittyError<
-            <T::Mapper as GroupMapper<2, Q>>::Err,
-            <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+            <Self::Mapper as GroupMapper<2, Q>>::Err,
+            <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
         >,
     >
     where
-        T::Mapper: GroupMapper<2, Q>,
-        <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>;
+    fn qr<Q>(
+        self,
+        query: Q,
+        qr_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        TensorQr<Self::Repr, Self::Mapper>,
+        SplittyError<
+            <Self::Mapper as GroupMapper<2, Q>>::Err,
+            <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
+        <Self::Mapper as AxisMapper>::Id: Clone;
+}
+
+impl<T: ToTensor> TensorQrExt for T {
+    fn qr_with_more_ids<Q>(
+        self,
+        query: Q,
+        q_qr_leg: <Self::Mapper as AxisMapper>::Id,
+        r_qr_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        TensorQr<Self::Repr, Self::Mapper>,
+        SplittyError<
+            <Self::Mapper as GroupMapper<2, Q>>::Err,
+            <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.split(queue).map_err(|e| SplittyError::Split(e))?;
+        let (grouped, axes_split) = legs.split(query).map_err(SplittyError::Split)?;
         let [q_legs, r_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 1],
                 vec![((0, q_qr_leg), (1, r_qr_leg))],
             ))
         }
-        .map_err(|e| SplittyError::Use(e))?;
-        Ok(TensorQr {
-            a: raw,
-            q_legs,
-            r_legs,
-            axes_split,
-        })
+        .map_err(SplittyError::Use)?;
+        Ok(unsafe { TensorQr::from_raw_unchecked(raw, q_legs, r_legs, axes_split) })
     }
     fn qr<Q>(
         self,
         set: Q,
-        qr_leg: <T::Mapper as AxisMapper>::Id,
+        qr_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorQr<T::Repr, T::Mapper>,
+        TensorQr<Self::Repr, Self::Mapper>,
         SplittyError<
-            <T::Mapper as GroupMapper<2, Q>>::Err,
-            <<T::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+            <Self::Mapper as GroupMapper<2, Q>>::Err,
+            <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
         >,
     >
     where
-        <T::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
-        T::Mapper: GroupMapper<2, Q>,
-        <T::Mapper as AxisMapper>::Id: Clone,
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
     {
         self.qr_with_more_ids(set, qr_leg.clone(), qr_leg)
     }
 }
+
+pub trait BoundTensorQrExt: ToBoundTensor {}
+
+impl<T: ToBoundTensor> BoundTensorQrExt for T {}

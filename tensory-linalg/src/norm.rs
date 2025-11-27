@@ -20,6 +20,11 @@ pub trait NormCtx<A: TensorRepr> {
 pub struct TensorNorm<A: TensorRepr> {
     a: A,
 }
+impl<A: TensorRepr> TensorNorm<A> {
+    pub fn from_raw(a: A) -> Self {
+        Self { a }
+    }
+}
 
 impl<A: TensorRepr, C: NormCtx<A>> TensorTask<C> for TensorNorm<A> {
     type Output = Result<C::Res, C::Err>;
@@ -29,21 +34,21 @@ impl<A: TensorRepr, C: NormCtx<A>> TensorTask<C> for TensorNorm<A> {
         ctx.norm(a)
     }
 }
-
-pub trait TensorNormExt<A: TensorRepr>: Sized {
-    fn norm(self) -> TensorNorm<A>;
-}
-
-impl<T: ToTensor> TensorNormExt<T::Repr> for T {
-    fn norm(self) -> TensorNorm<T::Repr> {
-        let (a, _) = self.to_tensor().into_raw();
-        TensorNorm { a }
-    }
-}
-
 pub trait NormRuntime<A: TensorRepr>: Runtime {
     type Ctx: NormCtx<A>;
     fn norm_ctx(&self) -> Self::Ctx;
+}
+
+pub trait TensorNormExt: ToTensor {
+    fn norm(self) -> TensorNorm<Self::Repr>;
+}
+
+impl<T: ToTensor> TensorNormExt for T {
+    // norm
+    fn norm(self) -> TensorNorm<Self::Repr> {
+        let (a, _) = self.to_tensor().into_raw();
+        TensorNorm::from_raw(a)
+    }
 }
 
 pub trait BoundTensorNormExt: ToBoundTensor {
