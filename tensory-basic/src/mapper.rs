@@ -19,7 +19,7 @@ use tensory_core::{
         AxisMapper, BuildableMapper, ConnectAxisOrigin, ConnectMapper, DecompConf,
         DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, GroupMapper, GroupedAxes,
         GroupedMapper, OverlayAxisMapping, OverlayMapper, ReplaceMapper, SolveConf,
-        SolveGroupedMapper, SynBuildableMapper, TranslateMapper,
+        SolveGroupedMapper, SortMapper, SynBuildableMapper, TranslateMapper,
     },
 };
 
@@ -387,9 +387,9 @@ impl<
 #[error("translation error")]
 pub struct TranslateErr;
 
-impl<Id: Eq, C> TranslateMapper<C> for VecMapper<Id> {
+impl<Id: Eq, C> SortMapper<C> for VecMapper<Id> {
     type Err = TranslateErr;
-    fn translate<
+    fn sort<
         'a,
         K: ExactSizeIterator + Iterator<Item = &'a Self::Id>,
         V: ExactSizeIterator + Iterator<Item = C>,
@@ -422,4 +422,15 @@ impl<Id: Eq, C> TranslateMapper<C> for VecMapper<Id> {
 
         Ok(contents.into_iter().map(|e| e.unwrap()).collect())
     }
+}
+
+impl<'i, Id: Eq> TranslateMapper<&'i Id> for VecMapper<Id> {
+    type Err = TranslateErr;
+    fn translate<'a>(&'a self, leg: &'i Self::Id) -> Result<usize, Self::Err> {
+        match self.0.iter().position(|e| e == leg) {
+            Some(idx) => Ok(idx),
+            None => Err(TranslateErr),
+        }
+    }
+    type Res = usize;
 }

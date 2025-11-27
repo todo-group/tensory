@@ -243,7 +243,7 @@ unsafe impl<E> TensorRepr for NdDenseViewMutRepr<'_, E> {
         self.data.shape().len()
     }
 }
-impl<E> AxisInfoReprImpl for NdDenseRepr<E> {
+impl<'a, E> AxisInfoReprImpl<'a> for NdDenseRepr<E> {
     type AxisInfo = usize;
 
     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
@@ -251,7 +251,7 @@ impl<E> AxisInfoReprImpl for NdDenseRepr<E> {
     }
 }
 
-impl<E> AxisInfoReprImpl for NdDenseViewRepr<'_, E> {
+impl<'a, E> AxisInfoReprImpl<'a> for NdDenseViewRepr<'a, E> {
     type AxisInfo = usize;
 
     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {

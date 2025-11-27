@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use crate::{
     args::LegMapArg,
-    mapper::{AxisMapper, TranslateMapper},
+    mapper::{AxisMapper, SortMapper},
     repr::TensorRepr,
     tensor::Tensor,
 };
@@ -137,10 +137,10 @@ impl<A: ElemGetRepr, B: AxisMapper> Tensor<A, B> {
         map: LegMapArg<K, V>,
     ) -> Result<Result<&A::E, A::Err>, B::Err>
     where
-        B: TranslateMapper<A::Index>,
+        B: SortMapper<A::Index>,
         B::Id: 'a,
     {
-        let v = self.mapper().translate(map)?;
+        let v = self.mapper().sort(map)?;
         Ok(unsafe { self.repr().get_unchecked(v) })
     }
 }
@@ -154,10 +154,10 @@ impl<A: ElemGetMutRepr, B: AxisMapper> Tensor<A, B> {
         map: LegMapArg<K, V>,
     ) -> Result<Result<&mut A::E, A::Err>, B::Err>
     where
-        B: TranslateMapper<A::Index>,
+        B: SortMapper<A::Index>,
         B::Id: 'a,
     {
-        let v = { self.mapper().translate(map)? };
+        let v = { self.mapper().sort(map)? };
         Ok(unsafe { self.repr_mut().get_mut_unchecked(v) })
     }
 }
@@ -165,7 +165,7 @@ impl<A: ElemGetMutRepr, B: AxisMapper> Tensor<A, B> {
 impl<
     'a,
     A: ElemGetRepr,
-    B: TranslateMapper<A::Index>,
+    B: SortMapper<A::Index>,
     K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
     V: ExactSizeIterator + Iterator<Item = A::Index>,
 > core::ops::Index<LegMapArg<K, V>> for Tensor<A, B>
@@ -183,7 +183,7 @@ where
 impl<
     'a,
     T: ElemGetMutRepr,
-    B: TranslateMapper<T::Index>,
+    B: SortMapper<T::Index>,
     K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
     V: ExactSizeIterator + Iterator<Item = T::Index>,
 > core::ops::IndexMut<LegMapArg<K, V>> for Tensor<T, B>

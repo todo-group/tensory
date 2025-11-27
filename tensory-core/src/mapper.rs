@@ -320,9 +320,9 @@ impl<const N: usize, const M: usize, Id> SolveConf<N, M, Id> {
     }
 }
 
-pub trait TranslateMapper<Content>: AxisMapper {
+pub trait SortMapper<Content>: AxisMapper {
     type Err;
-    fn translate<
+    fn sort<
         'a,
         K: ExactSizeIterator + Iterator<Item = &'a Self::Id>,
         V: ExactSizeIterator + Iterator<Item = Content>,
@@ -345,4 +345,10 @@ pub enum SplittyError<SE, DE> {
 pub trait ReplaceMapper<Q>: AxisMapper {
     type Err;
     fn replace(self, query: Q) -> Result<Self, Self::Err>;
+}
+
+pub trait TranslateMapper<Exp>: AxisMapper {
+    type Res;
+    type Err;
+    fn translate(&self, leg: Exp) -> Result<Self::Res, Self::Err>;
 }
