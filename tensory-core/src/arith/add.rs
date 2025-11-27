@@ -51,7 +51,7 @@ impl<C: AddCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> AddCtx<Lhs, Rhs>
     ) -> Result<Self::Res, Self::Err> {
         let n_l = lhs.naxes();
         let n_r = rhs.naxes();
-        let n = axis_mapping.dim();
+        let n = axis_mapping.naxes();
         if n_l != n || n_r != n {
             panic!("axis_mapping must match the number of axes with lhs and rhs");
         }

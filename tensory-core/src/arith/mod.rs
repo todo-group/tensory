@@ -19,7 +19,7 @@
 //! - `a / #`
 //! - `a ^ #`
 //!
-//! these are roughly covers the operations dinstincted in (non-comutative) group, ring, and field. (left subtraction and division are missed, but they are expected tp be same as `#-a` := `-(a-#)`, `#/a` := `1/# * a`)
+//! these roughly cover the operations dinstincted in (non-comutative) group, ring, and field. (left subtraction and division are missed, but they are expected tp be same as `#-a` := `-(a-#)`, `#/a` := `1/# * a`)
 //!
 
 /// provide interface for tensor-tensor addition

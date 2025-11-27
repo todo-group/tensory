@@ -83,7 +83,7 @@ impl<const N: usize> OverlayAxisMapping<N> {
         }
         Ok(unsafe { Self::from_raw_unchecked(n, maps) })
     }
-    pub fn dim(&self) -> usize {
+    pub fn naxes(&self) -> usize {
         self.n
     }
     pub fn into_raw(self) -> (usize, [Vec<usize>; N]) {
