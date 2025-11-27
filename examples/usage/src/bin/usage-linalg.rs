@@ -6,7 +6,10 @@ use tensory_basic::{
 };
 use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, linalg::HermiteEig};
+use tensory_ndarray::{
+    NdDenseTensor, NdDenseTensorExt,
+    linalg::{DiagExp, DiagPow, DiagPowI, Half, HermiteEig},
+};
 
 // type aliases for convenience. You can change them to other implementations.
 type Leg = Prime<Id128>;
@@ -34,6 +37,54 @@ fn main() -> anyhow::Result<()> {
         let t = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?; // [a,b,c,d]
         let n = (&t).norm().exec()?; // scalar
         println!("norm: {}", n);
+    }
+
+    // pow (sqrt)
+    {
+        let mut t = Tensor::<f64>::zero(lm![a=>a_n,a.prime()=>a_n,b=>b_n,b.prime()=>b_n])?; // [a,a',b,b']
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                t[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]] = (ai + bi) as f64;
+            }
+        }
+
+        let t_exp = (&t)
+            .pow(Half, ls![(&a, &a.prime()), (&b, &b.prime())])?
+            .exec()?; // [a,b,a',b']
+
+        let mut sum = 0.0;
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                sum += (t_exp[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]]
+                    - ((ai + bi) as f64).sqrt())
+                .abs();
+            }
+        }
+        println!("sqrt error: {}", sum);
+    }
+
+    // exp
+    {
+        let mut t = Tensor::<f64>::zero(lm![a=>a_n,a.prime()=>a_n,b=>b_n,b.prime()=>b_n])?; // [a,a',b,b']
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                t[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]] = (ai + bi) as f64;
+            }
+        }
+
+        let t_exp = (&t)
+            .exp(ls![(&a, &a.prime()), (&b, &b.prime())])?
+            .with(DiagExp)?; // [a,b,a',b']
+
+        let mut sum = 0.0;
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                sum += (t_exp[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]]
+                    - ((ai + bi) as f64).exp())
+                .abs();
+            }
+        }
+        println!("exp error: {}", sum);
     }
 
     // conj

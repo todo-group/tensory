@@ -1,23 +1,11 @@
-use num_complex::Complex;
-
-use std::{
-    f64::consts::PI,
-    hint::black_box,
-    time::{Duration, Instant},
-};
-
-use rand::{SeedableRng, rngs::SmallRng};
-use tensory_basic::{
-    id::{Id128, Prime},
-    mapper::VecMapper,
-};
-
+use std::f64::consts::PI;
+use tensory_basic::mapper::VecMapper;
 use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
-use tensory_ndarray::{
-    NdDenseTensor, NdDenseTensorExt, NdRuntime,
-    cut_filter::{Cutoff, MaxIx},
-};
+use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
+
+#[allow(unused_imports)]
+use rand::{SeedableRng, rngs::SmallRng};
 
 // type aliases for convenience. You can change them to other implementations.
 type Tensor<'a, E> = NdDenseTensor<E, VecMapper<&'a str>>;
@@ -50,14 +38,6 @@ fn main() -> anyhow::Result<()> {
     let t_mul_pi_div_pi = (t_mul_pi / PI)?;
 
     // as you can see, the the direct result of the `*` and `/` operation is already a bound tensor.
-    // this is
-
-    // in this case, it is TensorRightScalarMul and TensorRightScalarDiv respectively.
-    // the task building is lazy. the actual computation is performed when we call `.with(ctx)` method.
-    // `ctx` implements the required context trait for the operation. so you can switch different contexts to change the computation strategy.
-    // also, `ctx` has a role to pass a required resource, like memory allocator or CUBLAS handle.
-    // in these scalar operations, the context is `()`, which means no special context is required.
-    // they are considered default context. you can use `.exec()` method instead as a syntax sugar, as the second line.
 
     // here we perform subtraction to compute the difference between `t` and `t_mul_pi_div_pi`.
     let t_diff = (&t_mul_pi_div_pi - &t)?;
