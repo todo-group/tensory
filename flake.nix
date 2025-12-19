@@ -22,6 +22,8 @@
           })
           # for openblas
           pkgs.openblas
+          # for openblas 64-bit
+          # (pkgs.openblas.override { blas64 = true; })
 
           # for blis (not checked yet)
           # pkgs.blis
