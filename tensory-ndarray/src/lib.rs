@@ -7,6 +7,8 @@ extern crate blas_src;
 
 mod tenalg;
 
+pub use tenalg::error::TenalgError;
+
 pub mod arith;
 
 pub mod linalg;

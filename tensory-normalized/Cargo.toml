@@ -16,4 +16,6 @@ tensory-ndarray = { workspace = true }
 num-complex = { workspace = true }
 anyhow = { workspace = true }
 num-traits = { workspace = true }
+ndarray = { workspace = true }
 ndarray-linalg = { workspace = true }
+lin-dev-deps = { workspace = true }

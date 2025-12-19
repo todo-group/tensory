@@ -115,8 +115,8 @@ unsafe impl<E: ScalarOperand + Div<Output = E> + Clone> CommutativeScalarDivCtx<
     }
 }
 
-unsafe impl<'l, 'r, E: Lapack + Scalar + ConstZero>
-    MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
+unsafe impl<'l, 'r, E: Lapack + Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>
+    for ()
 {
     type Res = NdDenseRepr<E>;
     type Err = TenalgError;
