@@ -145,8 +145,8 @@ impl<'a, T: AsViewMutRepr<'a>, M: AxisMapper + Clone, RT: Runtime> ToBoundTensor
 }
 
 /// Error type for operations involving runtime context.
-#[derive(Error, Debug)]
-pub enum RuntimeError<AE, CE> {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
+pub enum RuntimeErr<AE, CE> {
     /// Runtime mismatch.
     #[error("Runtime mismatch")]
     Runtime,

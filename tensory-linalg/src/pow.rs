@@ -1,10 +1,9 @@
 use alloc::vec;
 
 use tensory_core::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeError, ToBoundTensor},
+    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
     mapper::{
-        AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes,
-        SplittyError,
+        AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, SplittyErr,
     },
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
@@ -98,7 +97,7 @@ pub trait TensorPowExt: ToTensor {
         query: Q,
     ) -> Result<
         TensorPow<Self::Repr, E, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
         >,
@@ -115,7 +114,7 @@ impl<T: ToTensor> TensorPowExt for T {
         query: Q,
     ) -> Result<
         TensorPow<Self::Repr, E, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
         >,
@@ -125,9 +124,9 @@ impl<T: ToTensor> TensorPowExt for T {
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.equiv_split(query).map_err(SplittyError::Split)?;
+        let (grouped, axes_split) = legs.equiv_split(query).map_err(SplittyErr::Split)?;
         let [legs] = unsafe { grouped.decomp(DecompConf::from_raw_unchecked([0, 0], vec![])) }
-            .map_err(SplittyError::Use)?;
+            .map_err(SplittyErr::Use)?;
         Ok(unsafe { TensorPow::from_raw_unchecked(raw, power, legs, axes_split) })
     }
 }
@@ -143,8 +142,8 @@ pub trait BoundTensorPowExt: ToBoundTensor {
             Self::Mapper,
             Self::Runtime,
         >,
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
@@ -168,8 +167,8 @@ impl<T: ToBoundTensor> BoundTensorPowExt for T {
             Self::Mapper,
             Self::Runtime,
         >,
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
@@ -184,9 +183,9 @@ impl<T: ToBoundTensor> BoundTensorPowExt for T {
         let (a, rt) = self.to_bound_tensor().into_raw();
 
         a.pow(power, query)
-            .map_err(RuntimeError::Axis)?
+            .map_err(RuntimeErr::Axis)?
             .with(rt.pow_ctx())
-            .map_err(RuntimeError::Ctx)
+            .map_err(RuntimeErr::Ctx)
             .map(|res| res.bind(rt))
     }
 }

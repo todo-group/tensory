@@ -3,7 +3,7 @@ use alloc::vec;
 use tensory_core::{
     mapper::{
         AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes,
-        GroupMapper, GroupedAxes, SolveConf, SolveGroupedMapper, SplittyError,
+        GroupMapper, GroupedAxes, SolveConf, SolveGroupedMapper, SplittyErr,
     },
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
@@ -91,7 +91,7 @@ pub trait TensorSolveEigExt<A: TensorRepr, M: AxisMapper>: Sized {
         d_dvinv_leg: M::Id,
     ) -> Result<
         TensorSolveEig<A, M>,
-        SplittyError<M::Err, <M::Grouped as SolveGroupedMapper<2, 2>>::Err>,
+        SplittyErr<M::Err, <M::Grouped as SolveGroupedMapper<2, 2>>::Err>,
     >
     where
         M: EquivGroupMapper<2, Q>,
@@ -103,7 +103,7 @@ pub trait TensorSolveEigExt<A: TensorRepr, M: AxisMapper>: Sized {
         dvinv_leg: M::Id,
     ) -> Result<
         TensorSolveEig<A, M>,
-        SplittyError<M::Err, <M::Grouped as SolveGroupedMapper<2, 2>>::Err>,
+        SplittyErr<M::Err, <M::Grouped as SolveGroupedMapper<2, 2>>::Err>,
     >
     where
         M: EquivGroupMapper<2, Q>,
@@ -120,7 +120,7 @@ impl<T: ToTensor> TensorSolveEigExt<T::Repr, T::Mapper> for T {
         d_dvinv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSolveEig<T::Repr, T::Mapper>,
-        SplittyError<
+        SplittyErr<
             <T::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as SolveGroupedMapper<2, 2>>::Err,
         >,
@@ -132,14 +132,14 @@ impl<T: ToTensor> TensorSolveEigExt<T::Repr, T::Mapper> for T {
         let (raw, legs) = self.to_tensor().into_raw();
         let (grouped, axes_split) = legs
             .equiv_split(queue)
-            .map_err(|e| SplittyError::Split(e))?;
+            .map_err(|e| SplittyErr::Split(e))?;
         let [v_legs, d_legs] = unsafe {
             grouped.solve(SolveConf::from_raw_unchecked(
                 [[true, false], [false, false]],
                 vec![(0, v_vd_leg), (1, d_vd_leg), (1, d_dvinv_leg)],
             ))
         }
-        .map_err(|e| SplittyError::Use(e))?;
+        .map_err(|e| SplittyErr::Use(e))?;
         Ok(TensorSolveEig {
             a: raw,
             d_legs,
@@ -154,7 +154,7 @@ impl<T: ToTensor> TensorSolveEigExt<T::Repr, T::Mapper> for T {
         dvinv_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSolveEig<T::Repr, T::Mapper>,
-        SplittyError<
+        SplittyErr<
             <T::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as SolveGroupedMapper<2, 2>>::Err,
         >,

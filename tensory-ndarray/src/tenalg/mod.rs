@@ -5,7 +5,7 @@ pub mod error;
 use alloc::vec::Vec;
 use convert::{mat_to_ten, ten_to_mat};
 use cut_filter::CutFilter;
-use error::TenalgError;
+use error::TenalgErr;
 use ndarray::{
     Array, Array1, Array2, ArrayBase, ArrayD, ArrayView1, ArrayView2, CowArray, Data, Dimension,
     ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot, s,
@@ -15,7 +15,7 @@ use ndarray_linalg::{
 };
 use num_traits::{ConstZero, clamp};
 
-type Result<T> = core::result::Result<T, TenalgError>;
+type Result<T> = core::result::Result<T, TenalgErr>;
 
 pub fn conj<S: Data, D: Dimension>(x: &ArrayBase<S, D>) -> Result<Array<S::Elem, D>>
 where
@@ -88,7 +88,7 @@ where
     let s_min_ix = s_filter.min_ix().unwrap_or(1);
     let s_max_ix = s_filter.max_ix().unwrap_or(s_vec.shape()[0]);
     if s_min_ix > s_max_ix || s_min_ix < 1 {
-        return Err(TenalgError::InvalidInput);
+        return Err(TenalgErr::InvalidInput);
     }
 
     let mut s_sqsum = <SS::Elem as Scalar>::Real::ZERO;
@@ -99,10 +99,10 @@ where
         let sq = s_vec[i].square();
         if !(sq >= <SS::Elem as Scalar>::Real::ZERO) {
             // negative or nan sing
-            return Err(TenalgError::InvalidResult);
+            return Err(TenalgErr::InvalidResult);
         } else if i != 0 && sq_pre < sq {
             // sing not ordered
-            return Err(TenalgError::InvalidResult);
+            return Err(TenalgErr::InvalidResult);
         }
         if sq > <SS::Elem as Scalar>::Real::ZERO {
             s_valid_ix += 1;
@@ -178,7 +178,7 @@ where
         let v = mat_to_ten(&v_mat_narrowed, v_ixs)?.into_owned();
         Ok((u, s, v))
     } else {
-        Err(TenalgError::InvalidResult)
+        Err(TenalgErr::InvalidResult)
     }
 }
 
@@ -221,7 +221,7 @@ where
         let v = mat_to_ten(&v_mat_narrowed, v_ixs)?.into_owned();
         Ok((u, s, v))
     } else {
-        Err(TenalgError::InvalidResult)
+        Err(TenalgErr::InvalidResult)
     }
 }
 
@@ -267,7 +267,7 @@ where
         let v = mat_to_ten(&v_mat_narrowed, v_ixs)?.into_owned();
         Ok((u, s, v))
     } else {
-        Err(TenalgError::InvalidResult)
+        Err(TenalgErr::InvalidResult)
     }
 }
 

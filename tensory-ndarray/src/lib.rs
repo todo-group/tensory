@@ -7,7 +7,7 @@ extern crate blas_src;
 
 mod tenalg;
 
-pub use tenalg::error::TenalgError;
+pub use tenalg::error::TenalgErr;
 
 pub mod arith;
 
@@ -315,8 +315,8 @@ pub type NdDenseTensor<E, B> = Tensor<NdDenseRepr<E>, B>;
 pub type NdDenseViewTensor<'a, E, B> = Tensor<NdDenseViewRepr<'a, E>, B>;
 pub type NdDenseViewMutTensor<'a, E, B> = Tensor<NdDenseViewMutRepr<'a, E>, B>;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Error)]
-pub enum NdDenseFromArrayError<E> {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
+pub enum NdDenseFromArrayErr<E> {
     #[error("The number of axes of array and leg set do not match")]
     AxisNum,
     #[error("Mapper build failed:{0}")]
@@ -333,7 +333,7 @@ pub trait NdDenseTensorExt<E, M: AxisMapper>: Sized {
     fn from_array<K: ExactSizeIterator + Iterator<Item = M::Id>>(
         array: ArrayD<E>,
         set: LegSetArg<K>,
-    ) -> Result<Self, NdDenseFromArrayError<M::Err>>
+    ) -> Result<Self, NdDenseFromArrayErr<M::Err>>
     where
         M: BuildableMapper<K>;
     fn zero<
@@ -422,7 +422,7 @@ impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
     fn from_array<K: ExactSizeIterator + Iterator<Item = M::Id>>(
         array: ArrayD<E>,
         set: LegSetArg<K>,
-    ) -> Result<Self, NdDenseFromArrayError<M::Err>>
+    ) -> Result<Self, NdDenseFromArrayErr<M::Err>>
     where
         M: BuildableMapper<K>,
     {
@@ -431,7 +431,7 @@ impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
             let mapper = M::build(set)?;
             Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::from_raw(array), mapper) })
         } else {
-            Err(NdDenseFromArrayError::AxisNum)
+            Err(NdDenseFromArrayErr::AxisNum)
         }
     }
     fn zero<

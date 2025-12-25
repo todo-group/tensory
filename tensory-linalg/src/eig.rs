@@ -3,7 +3,7 @@ use alloc::vec;
 use tensory_core::{
     mapper::{
         AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes,
-        SplittyError,
+        SplittyErr,
     },
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
@@ -133,7 +133,7 @@ pub trait TensorEigExt<A: TensorRepr, M: AxisMapper>: Sized {
         d_vd_leg: M::Id,
         d_dvc_leg: M::Id,
         vc_dvc_leg: M::Id,
-    ) -> Result<TensorEig<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
+    ) -> Result<TensorEig<A, M>, SplittyErr<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
     where
         M: EquivGroupMapper<2, Q>,
         M::Grouped: DecompGroupedMapper<2, 3>;
@@ -142,7 +142,7 @@ pub trait TensorEigExt<A: TensorRepr, M: AxisMapper>: Sized {
         set: Q,
         vd_leg: M::Id,
         dvc_leg: M::Id,
-    ) -> Result<TensorEig<A, M>, SplittyError<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
+    ) -> Result<TensorEig<A, M>, SplittyErr<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
     where
         M: EquivGroupMapper<2, Q>,
         M::Grouped: DecompGroupedMapper<2, 3>,
@@ -159,7 +159,7 @@ impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
         vc_dvc_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorEig<T::Repr, T::Mapper>,
-        SplittyError<
+        SplittyErr<
             <T::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
@@ -169,7 +169,7 @@ impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
         <T::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.equiv_split(queue).map_err(SplittyError::Split)?;
+        let (grouped, axes_split) = legs.equiv_split(queue).map_err(SplittyErr::Split)?;
         let [vc_legs, d_legs, v_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 2],
@@ -179,7 +179,7 @@ impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
                 ],
             ))
         }
-        .map_err(SplittyError::Use)?;
+        .map_err(SplittyErr::Use)?;
         Ok(TensorEig {
             a: raw,
             v_legs: vc_legs,
@@ -195,7 +195,7 @@ impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
         dvc_leg: <T::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorEig<T::Repr, T::Mapper>,
-        SplittyError<
+        SplittyErr<
             <T::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,

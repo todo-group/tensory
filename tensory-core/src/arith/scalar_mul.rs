@@ -1,7 +1,7 @@
 use core::{convert::Infallible, ops::Mul};
 
 use crate::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeError, ToBoundTensor},
+    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
     mapper::AxisMapper,
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
@@ -250,7 +250,7 @@ macro_rules! impl_scalar_mul_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     Infallible,
                     <<RT as RightScalarMulRuntime<
                         <$a as ToBoundTensor>::Repr,
@@ -266,7 +266,7 @@ macro_rules! impl_scalar_mul_runtime {
 
                 let res = (lhs * rhs)
                     .with(lhs_rt.right_scalar_mul_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, lhs_rt))
             }
         }
@@ -289,7 +289,7 @@ macro_rules! impl_scalar_mul_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     Infallible,
                     <<RT as LeftScalarMulRuntime<
                         <$a as ToBoundTensor>::Repr,
@@ -305,7 +305,7 @@ macro_rules! impl_scalar_mul_runtime {
 
                 let res = (self * rhs)
                     .with(rhs_rt.left_scalar_mul_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, rhs_rt))
             }
         }
@@ -327,7 +327,7 @@ macro_rules! impl_scalar_mul_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     Infallible,
                     <<RT as RightScalarMulRuntime<
                         <$a as ToBoundTensor>::Repr,
@@ -343,7 +343,7 @@ macro_rules! impl_scalar_mul_runtime {
 
                 let res = (lhs * rhs)
                     .with(lhs_rt.right_scalar_mul_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, lhs_rt))
             }
         }

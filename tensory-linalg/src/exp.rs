@@ -4,9 +4,9 @@ use tensory_core::{
     bound_tensor::{BoundTensor, Runtime, ToBoundTensor},
     mapper::{
         AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes,
-        GroupMapper, SplittyError,
+        GroupMapper, SplittyErr,
     },
-    prelude::RuntimeError,
+    prelude::RuntimeErr,
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
 };
@@ -89,7 +89,7 @@ pub trait TensorExpExt: ToTensor {
         query: Q,
     ) -> Result<
         TensorExp<Self::Repr, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
         >,
@@ -105,7 +105,7 @@ impl<T: ToTensor> TensorExpExt for T {
         query: Q,
     ) -> Result<
         TensorExp<Self::Repr, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
         >,
@@ -115,9 +115,9 @@ impl<T: ToTensor> TensorExpExt for T {
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.equiv_split(query).map_err(SplittyError::Split)?;
+        let (grouped, axes_split) = legs.equiv_split(query).map_err(SplittyErr::Split)?;
         let [legs] = unsafe { grouped.decomp(DecompConf::from_raw_unchecked([0, 0], vec![])) }
-            .map_err(SplittyError::Use)?;
+            .map_err(SplittyErr::Use)?;
         Ok(unsafe { TensorExp::from_raw_unchecked(raw, legs, axes_split) })
     }
 }
@@ -132,8 +132,8 @@ pub trait BoundTensorExpExt: ToBoundTensor {
             Self::Mapper,
             Self::Runtime,
         >,
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
@@ -156,8 +156,8 @@ impl<T: ToBoundTensor> BoundTensorExpExt for T {
             Self::Mapper,
             Self::Runtime,
         >,
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
@@ -172,9 +172,9 @@ impl<T: ToBoundTensor> BoundTensorExpExt for T {
         let (a, rt) = self.to_bound_tensor().into_raw();
 
         a.exp(query)
-            .map_err(RuntimeError::Axis)?
+            .map_err(RuntimeErr::Axis)?
             .with(rt.exp_ctx())
-            .map_err(RuntimeError::Ctx)
+            .map_err(RuntimeErr::Ctx)
             .map(|res| res.bind(rt))
     }
 }

@@ -1,8 +1,8 @@
 use alloc::vec;
 
 use tensory_core::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeError, ToBoundTensor},
-    mapper::{AxisMapper, DecompConf, DecompGroupedMapper, GroupMapper, GroupedAxes, SplittyError},
+    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
+    mapper::{AxisMapper, DecompConf, DecompGroupedMapper, GroupMapper, GroupedAxes, SplittyErr},
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
 };
@@ -115,7 +115,7 @@ pub trait TensorSvdExt: ToTensor {
         v_sv_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSvd<Self::Repr, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
@@ -130,7 +130,7 @@ pub trait TensorSvdExt: ToTensor {
         sv_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSvd<Self::Repr, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
@@ -152,7 +152,7 @@ impl<T: ToTensor> TensorSvdExt for T {
         v_sv_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSvd<Self::Repr, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
@@ -162,7 +162,7 @@ impl<T: ToTensor> TensorSvdExt for T {
         <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
     {
         let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.split(query).map_err(SplittyError::Split)?;
+        let (grouped, axes_split) = legs.split(query).map_err(SplittyErr::Split)?;
         let [u_legs, s_legs, v_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 2],
@@ -172,7 +172,7 @@ impl<T: ToTensor> TensorSvdExt for T {
                 ],
             ))
         }
-        .map_err(SplittyError::Use)?;
+        .map_err(SplittyErr::Use)?;
         Ok(unsafe { TensorSvd::from_raw_unchecked(raw, u_legs, s_legs, v_legs, axes_split) })
     }
     fn svd<Q>(
@@ -182,7 +182,7 @@ impl<T: ToTensor> TensorSvdExt for T {
         sv_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
         TensorSvd<Self::Repr, Self::Mapper>,
-        SplittyError<
+        SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
@@ -230,8 +230,8 @@ pub trait BoundTensorSvdExt: ToBoundTensor {
                 Self::Runtime,
             >,
         ),
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as GroupMapper<2, Q>>::Err,
                 <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
             >,
@@ -274,8 +274,8 @@ pub trait BoundTensorSvdExt: ToBoundTensor {
                 Self::Runtime,
             >,
         ),
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as GroupMapper<2, Q>>::Err,
                 <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
             >,
@@ -325,8 +325,8 @@ impl<T: ToBoundTensor> BoundTensorSvdExt for T {
                 Self::Runtime,
             >,
         ),
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as GroupMapper<2, Q>>::Err,
                 <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
             >,
@@ -343,9 +343,9 @@ impl<T: ToBoundTensor> BoundTensorSvdExt for T {
         let (a, rt) = self.to_bound_tensor().into_raw();
 
         a.svd_with_more_ids(query, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg)
-            .map_err(RuntimeError::Axis)?
+            .map_err(RuntimeErr::Axis)?
             .with(rt.svd_ctx(option))
-            .map_err(RuntimeError::Ctx)
+            .map_err(RuntimeErr::Ctx)
             .map(|(u, s, v)| (u.bind(rt.clone()), s.bind(rt.clone()), v.bind(rt)))
     }
 
@@ -379,8 +379,8 @@ impl<T: ToBoundTensor> BoundTensorSvdExt for T {
                 Self::Runtime,
             >,
         ),
-        RuntimeError<
-            SplittyError<
+        RuntimeErr<
+            SplittyErr<
                 <Self::Mapper as GroupMapper<2, Q>>::Err,
                 <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
             >,

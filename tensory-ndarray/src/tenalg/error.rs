@@ -1,36 +1,22 @@
-use core::{error::Error, fmt::Display};
+use core::fmt::Display;
 use ndarray_linalg::error::LinalgError;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub enum TenalgError {
+#[derive(Debug, Error)]
+pub enum TenalgErr {
+    #[error("Tenalg received invalid input")]
     InvalidInput,
+    #[error("Linalg returned invalid result")]
     InvalidResult,
+    #[error("Linalg failed: {0}")]
     Linalg(LinalgError),
 }
 
-impl Display for TenalgError {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            TenalgError::InvalidInput => {
-                write!(f, "Tenalg received invalid input")
-            }
-            TenalgError::InvalidResult => {
-                write!(f, "Linalg returned invalid result")
-            }
-            TenalgError::Linalg(le) => {
-                write!(f, "Linalg failed: {}", le)
-            }
-        }
-    }
-}
-
-impl Error for TenalgError {}
-
-impl<T> From<T> for TenalgError
+impl<T> From<T> for TenalgErr
 where
     LinalgError: From<T>,
 {
     fn from(source: T) -> Self {
-        TenalgError::Linalg(source.into())
+        TenalgErr::Linalg(source.into())
     }
 }

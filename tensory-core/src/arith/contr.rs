@@ -1,7 +1,7 @@
 use core::ops::Mul;
 
 use crate::{
-    bound_tensor::{BoundTensor, RuntimeError},
+    bound_tensor::{BoundTensor, RuntimeErr},
     mapper::{AxisMapper, ConnectAxisOrigin, ConnectMapper},
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
@@ -186,7 +186,7 @@ macro_rules! impl_mul_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     <M as ConnectMapper<2>>::Err,
                     <<RT as MulRuntime<
                         <$l as ToBoundTensor>::Repr,
@@ -202,12 +202,12 @@ macro_rules! impl_mul_runtime {
                 let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
 
                 if lhs_rt != rhs_rt {
-                    return Err(RuntimeError::Runtime);
+                    return Err(RuntimeErr::Runtime);
                 }
                 let res = (lhs * rhs)
-                    .map_err(RuntimeError::Axis)?
+                    .map_err(RuntimeErr::Axis)?
                     .with(lhs_rt.mul_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, lhs_rt))
             }
         }

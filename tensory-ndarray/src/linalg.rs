@@ -20,7 +20,7 @@ use tensory_linalg::{
 use crate::{
     NdDenseRepr, NdDenseViewRepr, NdRuntime,
     cut_filter::CutFilter,
-    tenalg::{conj, diag_map, error::TenalgError, into_eig, into_eigh, into_qr, into_svddc},
+    tenalg::{conj, diag_map, error::TenalgErr, into_eig, into_eigh, into_qr, into_svddc},
 };
 
 unsafe impl<'a, E: Scalar + Lapack, C: CutFilter<<E as Scalar>::Real>>
@@ -31,7 +31,7 @@ where
     type U = NdDenseRepr<E>;
     type S = NdDenseRepr<E::Real>;
     type V = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn svd_unchecked(
         self,
@@ -87,7 +87,7 @@ where
 unsafe impl<'a, E: Scalar + Lapack> QrCtxImpl<NdDenseViewRepr<'a, E>> for () {
     type Q = NdDenseRepr<E>;
     type R = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn qr_unchecked(
         self,
@@ -128,7 +128,7 @@ unsafe impl<'a, E: Scalar + Lapack> EigCtxImpl<NdDenseViewRepr<'a, E>> for Hermi
     type D = NdDenseRepr<E::Real>;
     type VC = NdDenseRepr<E>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn eig_unchecked(
         self,
@@ -173,7 +173,7 @@ unsafe impl<'a, E: Scalar + Lapack> SolveEigCtxImpl<NdDenseViewRepr<'a, E>> for 
     type D = NdDenseRepr<E::Complex>;
     type V = NdDenseRepr<E::Complex>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn solve_eig_unchecked(
         self,
@@ -224,7 +224,7 @@ impl<'a, E: Scalar + Lapack> NormRuntime<NdDenseViewRepr<'a, E>> for NdRuntime {
 unsafe impl<'a, E: Scalar> ConjCtx<NdDenseViewRepr<'a, E>> for () {
     type Res = NdDenseRepr<E>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     fn conjugate(self, a: NdDenseViewRepr<'a, E>) -> Result<Self::Res, Self::Err> {
         Ok(NdDenseRepr {
@@ -239,7 +239,7 @@ pub struct DiagExp;
 unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for DiagExp {
     type Res = NdDenseRepr<E>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn exp_unchecked(
         self,
@@ -277,7 +277,7 @@ pub struct DiagPowF;
 unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for DiagPow {
     type Res = NdDenseRepr<E>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn pow_unchecked(
         self,
@@ -301,7 +301,7 @@ unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for DiagPow {
 unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Real> for DiagPowF {
     type Res = NdDenseRepr<E>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn pow_unchecked(
         self,
@@ -353,7 +353,7 @@ pub struct DiagPowI;
 unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for DiagPowI {
     type Res = NdDenseRepr<E>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn pow_unchecked(
         self,
@@ -381,7 +381,7 @@ pub struct Half;
 unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, Half> for () {
     type Res = NdDenseRepr<E>;
 
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn pow_unchecked(
         self,

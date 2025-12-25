@@ -1,5 +1,5 @@
 use crate::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeError, ToBoundTensor},
+    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
     mapper::AxisMapper,
     repr::TensorRepr,
     tensor::{Tensor, TensorTask, ToTensor},
@@ -91,7 +91,7 @@ macro_rules! impl_neg_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     Infallible,
                     <<RT as NegRuntime<
                         <$a as ToBoundTensor>::Repr
@@ -104,7 +104,7 @@ macro_rules! impl_neg_runtime {
                 let (a, a_rt) = self.to_bound_tensor().into_raw();
                 let res = (-a)
                     .with(a_rt.neg_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, a_rt))
             }
         }

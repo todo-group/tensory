@@ -2,7 +2,7 @@ use core::convert::Infallible;
 use core::ops::Div;
 
 use crate::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeError, ToBoundTensor},
+    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
     mapper::AxisMapper,
     repr::TensorRepr,
     tensor::{Tensor, TensorTask},
@@ -244,7 +244,7 @@ macro_rules! impl_scalar_div_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     Infallible,
                     <<RT as RightScalarDivRuntime<
                         <$a as ToBoundTensor>::Repr,
@@ -260,7 +260,7 @@ macro_rules! impl_scalar_div_runtime {
 
                 let res = (lhs / rhs)
                     .with(lhs_rt.right_scalar_div_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, lhs_rt))
             }
         }
@@ -321,7 +321,7 @@ macro_rules! impl_scalar_div_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     Infallible,
                     <<RT as RightScalarDivRuntime<
                         <$a as ToBoundTensor>::Repr,
@@ -337,7 +337,7 @@ macro_rules! impl_scalar_div_runtime {
 
                 let res = (lhs / rhs)
                     .with(lhs_rt.right_scalar_div_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, lhs_rt))
             }
         }

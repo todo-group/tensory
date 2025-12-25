@@ -1,7 +1,7 @@
 use core::convert::Infallible;
 
 use tensory_core::{
-    bound_tensor::{Runtime, RuntimeError, ToBoundTensor},
+    bound_tensor::{Runtime, RuntimeErr, ToBoundTensor},
     repr::TensorRepr,
     tensor::{TensorTask, ToTensor},
 };
@@ -57,7 +57,7 @@ pub trait BoundTensorNormExt: ToBoundTensor {
         self,
     ) -> Result<
         <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Res,
-        RuntimeError<
+        RuntimeErr<
             Infallible,
             <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Err,
         >,
@@ -71,7 +71,7 @@ impl<T: ToBoundTensor> BoundTensorNormExt for T {
         self,
     ) -> Result<
         <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Res,
-        RuntimeError<
+        RuntimeErr<
             Infallible,
             <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Err,
         >,
@@ -80,6 +80,6 @@ impl<T: ToBoundTensor> BoundTensorNormExt for T {
         T::Runtime: NormRuntime<Self::Repr>,
     {
         let (a, rt) = self.to_bound_tensor().into_raw();
-        a.norm().with(rt.norm_ctx()).map_err(RuntimeError::Ctx)
+        a.norm().with(rt.norm_ctx()).map_err(RuntimeErr::Ctx)
     }
 }

@@ -15,7 +15,7 @@ use tensory_core::{
 
 use crate::{
     NdDenseRepr, NdDenseViewRepr, NdRuntime,
-    tenalg::{error::TenalgError, mul},
+    tenalg::{error::TenalgErr, mul},
 };
 
 unsafe impl<'l, 'r, E> AddCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
@@ -23,7 +23,7 @@ where
     for<'a> &'a E: Add<&'a E, Output = E> + Clone,
 {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn add_unchecked(
         self,
@@ -44,7 +44,7 @@ where
                 data: Zip::from(&lhs_raw).and(&rhs_raw).map_collect(|l, r| l + r),
             })
         } else {
-            Err(TenalgError::InvalidInput)
+            Err(TenalgErr::InvalidInput)
         }
     }
 }
@@ -54,7 +54,7 @@ where
     for<'a> &'a E: Sub<&'a E, Output = E> + Clone,
 {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn sub_unchecked(
         self,
@@ -75,14 +75,14 @@ where
                 data: Zip::from(&lhs_raw).and(&rhs_raw).map_collect(|l, r| l - r),
             })
         } else {
-            Err(TenalgError::InvalidInput)
+            Err(TenalgErr::InvalidInput)
         }
     }
 }
 
 unsafe impl<E: Neg<Output = E> + Clone> NegCtx<NdDenseRepr<E>> for () {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     fn negate(self, a: NdDenseRepr<E>) -> Result<Self::Res, Self::Err> {
         Ok(NdDenseRepr { data: -(a.data) })
@@ -93,7 +93,7 @@ unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> CommutativeScalarMulCtx<
     for ()
 {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     fn scalar_mul(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
         Ok(NdDenseRepr {
@@ -106,7 +106,7 @@ unsafe impl<E: ScalarOperand + Div<Output = E> + Clone> CommutativeScalarDivCtx<
     for ()
 {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     fn scalar_div(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
         Ok(NdDenseRepr {
@@ -119,7 +119,7 @@ unsafe impl<'l, 'r, E: Lapack + Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDen
     for ()
 {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgError;
+    type Err = TenalgErr;
 
     unsafe fn mul_unchecked(
         self,
@@ -142,7 +142,7 @@ unsafe impl<'l, 'r, E: Lapack + Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDen
                 _ => panic!("Unexpected axis"),
             };
             if lhs_raw.shape()[*lhs_idx] != rhs_raw.shape()[*rhs_idx] {
-                return Err(TenalgError::InvalidInput);
+                return Err(TenalgErr::InvalidInput);
             }
             lhs_idxv[*lhs_idx].0 = true;
             rhs_idxv[*rhs_idx].0 = false;

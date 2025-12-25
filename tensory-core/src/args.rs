@@ -1,5 +1,7 @@
 //! useful args when IDs involved
 
+use thiserror::Error;
+
 #[macro_export]
 macro_rules! leg {
     ( $( $x:expr ),* ) => {
@@ -155,20 +157,9 @@ impl<K: ExactSizeIterator, V: ExactSizeIterator> LegMapArg<K, V> {
 //     }
 // }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
+#[error("leg error")]
 pub struct LegErr;
-
-impl core::fmt::Display for LegErr {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        write!(f, "leg error")
-    }
-}
-
-impl core::error::Error for LegErr {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        None
-    }
-}
 
 // #[cfg(test)]
 // mod tests {

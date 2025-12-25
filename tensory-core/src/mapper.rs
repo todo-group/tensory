@@ -341,8 +341,8 @@ pub trait SortMapper<Content>: AxisMapper {
         <Self as AxisMapper>::Id: 'a;
 }
 
-#[derive(Error, Debug)]
-pub enum SplittyError<SE, DE> {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
+pub enum SplittyErr<SE, DE> {
     #[error("Split error: {0}")]
     Split(SE),
     #[error("Use error: {0}")]

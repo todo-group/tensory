@@ -1,7 +1,7 @@
 use core::ops::Sub;
 
 use crate::{
-    bound_tensor::{BoundTensor, RuntimeError},
+    bound_tensor::{BoundTensor, RuntimeErr},
     mapper::{AxisMapper, OverlayAxisMapping, OverlayMapper},
     repr::TensorRepr,
     tensor::{Tensor, TensorTask},
@@ -186,7 +186,7 @@ macro_rules! impl_sub_runtime {
                     M,
                     RT,
                 >,
-                RuntimeError<
+                RuntimeErr<
                     <M as OverlayMapper<2>>::Err,
                     <<RT as SubRuntime<
                         <$l as ToBoundTensor>::Repr,
@@ -202,12 +202,12 @@ macro_rules! impl_sub_runtime {
                 let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
 
                 if lhs_rt != rhs_rt {
-                    return Err(RuntimeError::Runtime);
+                    return Err(RuntimeErr::Runtime);
                 }
                 let res = (lhs - rhs)
-                    .map_err(RuntimeError::Axis)?
+                    .map_err(RuntimeErr::Axis)?
                     .with(lhs_rt.sub_ctx())
-                    .map_err(RuntimeError::Ctx)?;
+                    .map_err(RuntimeErr::Ctx)?;
                 Ok(BoundTensor::from_raw(res, lhs_rt))
             }
         }

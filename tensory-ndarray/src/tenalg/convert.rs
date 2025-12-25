@@ -1,8 +1,8 @@
 use ndarray::{ArrayBase, CowArray, Data, Dimension, Ix2, Order, ShapeArg};
 
-use super::error::TenalgError;
+use super::error::TenalgErr;
 
-type Result<T> = core::result::Result<T, TenalgError>;
+type Result<T> = core::result::Result<T, TenalgErr>;
 
 pub fn ten_to_mat<'a, ST: Data, DT: Dimension, Sh>(
     ten: &'a ArrayBase<ST, DT>,

@@ -30,7 +30,7 @@ pub mod utils;
 
 pub mod args;
 
-pub mod veccy;
+mod veccy;
 
 pub mod prelude {
     //! A prelude module re-exporting commonly used items.
