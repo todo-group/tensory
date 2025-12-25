@@ -120,7 +120,7 @@ unsafe impl<'a, E: Scalar + Lapack> QrCtxImpl<NdDenseViewRepr<'a, E>> for () {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct HermiteEig;
 
 unsafe impl<'a, E: Scalar + Lapack> EigCtxImpl<NdDenseViewRepr<'a, E>> for HermiteEig {
@@ -233,6 +233,7 @@ unsafe impl<'a, E: Scalar> ConjCtx<NdDenseViewRepr<'a, E>> for () {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DiagExp;
 
 unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for DiagExp {
@@ -266,8 +267,11 @@ unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for DiagExp {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DiagPow;
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DiagPowF;
+//#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 //pub struct DiagPowC;
 
 unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for DiagPow {
@@ -343,6 +347,7 @@ unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Real> for DiagP
 //     }
 // }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DiagPowI;
 
 unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for DiagPowI {
@@ -370,6 +375,7 @@ unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for DiagPowI 
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Half;
 
 unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, Half> for () {
@@ -400,10 +406,9 @@ unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, Half> for () {
 #[cfg(test)]
 mod tests {
 
-    use std::{println, vec};
+    use std::println;
 
     use anyhow::Ok;
-    use ndarray::array;
     use ndarray_linalg::Scalar;
     use tensory_basic::{
         id::{Id128, Prime},
@@ -416,7 +421,7 @@ mod tests {
     };
 
     use crate::{
-        NdDenseRepr, NdDenseTensor, NdDenseTensorExt,
+        NdDenseTensor, NdDenseTensorExt,
         linalg::{DiagExp, HermiteEig},
     };
     use tensory_core::tensor::TensorTask;
@@ -737,15 +742,15 @@ mod tests {
         //let c_n = 20;
 
         let mut t = Tensor::zero(lm![a=>a_n, a.prime()=>a_n, b=>b_n, b.prime()=>b_n])?;
-        let t = Tensor::eye(lm![[a,a.prime()]=>a_n, [b,b.prime()]=>b_n])?;
+        //let t = Tensor::eye(lm![[a,a.prime()]=>a_n, [b,b.prime()]=>b_n])?;
+
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                t[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]] = (ai + bi) as f64;
+            }
+        }
 
         println!("{:?}", t.repr().data.shape());
-
-        // for ai in 0..a_n {
-        //     for bi in 0..b_n {
-        //         t[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]] = (ai + bi) as f64;
-        //     }
-        // }
 
         let t_exp = (&t)
             .exp(ls![(&a, &a.prime()), (&b, &b.prime())])?

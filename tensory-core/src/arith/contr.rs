@@ -58,8 +58,8 @@ impl<C: MulCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> MulCtx<Lhs, Rhs>
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Intermediate task struct for contraction operation.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorMul<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
     lhs: L,
     rhs: R,

@@ -17,6 +17,7 @@ pub trait NormCtx<A: TensorRepr> {
     fn norm(self, a: A) -> Result<Self::Res, Self::Err>;
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorNorm<A: TensorRepr> {
     a: A,
 }

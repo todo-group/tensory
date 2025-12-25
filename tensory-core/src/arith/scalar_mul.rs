@@ -23,6 +23,8 @@ pub unsafe trait LeftScalarMulCtx<A: TensorRepr, E> {
 }
 
 /// Intermediate task struct for left scalar multiplication operation.
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorLeftScalarMul<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
@@ -60,6 +62,7 @@ pub unsafe trait RightScalarMulCtx<A: TensorRepr, E> {
 }
 
 /// Intermediate task struct for right scalar multiplication operation.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorRightScalarMul<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,

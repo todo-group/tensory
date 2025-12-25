@@ -24,6 +24,7 @@ pub unsafe trait NegCtx<A: TensorRepr> {
 }
 
 /// Intermediate task struct for negation operation.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorNeg<A: TensorRepr, M: AxisMapper> {
     a: A,
     res_mapper: M,

@@ -60,6 +60,7 @@ impl<C: SubCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> SubCtx<Lhs, Rhs>
 }
 
 /// Intermediate task struct for subtraction operation.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorSub<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
     lhs: L,
     rhs: R,

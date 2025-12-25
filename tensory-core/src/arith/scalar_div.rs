@@ -24,6 +24,7 @@ pub unsafe trait LeftScalarDivCtx<A: TensorRepr, E> {
 }
 
 /// Intermediate task struct for left scalar division operation.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorLeftScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,
@@ -61,6 +62,7 @@ pub unsafe trait RightScalarDivCtx<A: TensorRepr, E> {
 }
 
 /// Intermediate task struct for right scalar division operation.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorRightScalarDiv<A: TensorRepr, M: AxisMapper, E> {
     a: A,
     scalar: E,

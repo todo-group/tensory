@@ -65,7 +65,7 @@ macro_rules! lm {
 //     }
 // }
 
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LegSetArg<T: ExactSizeIterator>(T);
 
 impl<T: ExactSizeIterator> LegSetArg<T> {
@@ -76,7 +76,7 @@ impl<T: ExactSizeIterator> LegSetArg<T> {
         self.0
     }
 }
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct LegMapArg<K: ExactSizeIterator, V: ExactSizeIterator>(K, V);
 
 impl<K: ExactSizeIterator, V: ExactSizeIterator> LegMapArg<K, V> {
@@ -155,16 +155,16 @@ impl<K: ExactSizeIterator, V: ExactSizeIterator> LegMapArg<K, V> {
 //     }
 // }
 
-#[derive(Debug)]
-pub struct LegError;
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct LegErr;
 
-impl core::fmt::Display for LegError {
+impl core::fmt::Display for LegErr {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "leg error")
     }
 }
 
-impl core::error::Error for LegError {
+impl core::error::Error for LegErr {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         None
     }

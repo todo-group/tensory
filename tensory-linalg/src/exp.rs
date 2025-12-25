@@ -49,6 +49,7 @@ impl<C: ExpCtxImpl<A>, A: TensorRepr> ExpCtx<A> for C {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorExp<A: TensorRepr, M: AxisMapper> {
     a: A,
     legs: M,

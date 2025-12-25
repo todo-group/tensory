@@ -57,6 +57,7 @@ pub unsafe trait OverlayMapper<const N: usize>: AxisMapper {
     fn overlay(mappers: [Self; N]) -> Result<(Self, OverlayAxisMapping<N>), Self::Err>;
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct OverlayAxisMapping<const N: usize> {
     n: usize,
     maps: [Vec<usize>; N],
@@ -96,7 +97,7 @@ pub unsafe trait ConnectMapper<const N: usize>: AxisMapper {
     fn connect(mappers: [Self; N]) -> Result<(Self, ConnectAxisOrigin<N>), Self::Err>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ConnectAxisOrigin<const N: usize> {
     in_lens: [usize; N],
     axis_connection: Vec<((usize, usize), (usize, usize))>,
@@ -153,6 +154,7 @@ pub unsafe trait GroupMapper<const N: usize, Q>: AxisMapper {
     type Err;
     fn split(self, queue: Q) -> Result<(Self::Grouped, GroupedAxes<N>), Self::Err>;
 }
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GroupedAxes<const N: usize> {
     len: usize,
     groups: [Vec<usize>; N],
@@ -191,6 +193,7 @@ pub unsafe trait EquivGroupMapper<const N: usize, Q>: AxisMapper {
     type Err;
     fn equiv_split(self, queue: Q) -> Result<(Self::Grouped, EquivGroupedAxes<N>), Self::Err>;
 }
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EquivGroupedAxes<const N: usize> {
     len: usize,
     groups: [Vec<usize>; N],
@@ -246,6 +249,8 @@ pub unsafe trait DecompGroupedMapper<const N: usize, const M: usize>:
         conf: DecompConf<N, M, <Self::Mapper as AxisMapper>::Id>,
     ) -> Result<[Self::Mapper; M], Self::Err>;
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DecompConf<const N: usize, const M: usize, Id> {
     group_belongs: [usize; N],
     new_bonds: Vec<((usize, Id), (usize, Id))>,
@@ -290,6 +295,8 @@ pub unsafe trait SolveGroupedMapper<const N: usize, const M: usize>:
         conf: SolveConf<N, M, <Self::Mapper as AxisMapper>::Id>,
     ) -> Result<[Self::Mapper; M], Self::Err>;
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SolveConf<const N: usize, const M: usize, Id> {
     group_belongs: [[bool; N]; M],
     new_legs: Vec<(usize, Id)>,

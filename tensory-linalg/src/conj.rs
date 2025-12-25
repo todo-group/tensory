@@ -21,6 +21,7 @@ pub unsafe trait ConjCtx<A: TensorRepr> {
     fn conjugate(self, a: A) -> Result<Self::Res, Self::Err>;
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorConj<A: TensorRepr, B: AxisMapper> {
     a: A,
     res_mgr: B,

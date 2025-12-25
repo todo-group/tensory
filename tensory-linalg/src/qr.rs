@@ -47,6 +47,7 @@ impl<C: QrCtxImpl<A>, A: TensorRepr> QrCtx<A> for C {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorQr<A: TensorRepr, M: AxisMapper> {
     a: A,
     q_legs: M,

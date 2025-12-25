@@ -31,6 +31,7 @@ impl<E: Scalar, F1: CutFilter<E>, F2: CutFilter<E>> CutFilter<E> for (F1, F2) {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct MaxIx {
     max_ix: Ix,
 }
@@ -52,6 +53,7 @@ impl<E: Scalar> CutFilter<E> for MaxIx {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct MinIx {
     min_ix: Ix,
 }
@@ -73,6 +75,7 @@ impl<E: Scalar> CutFilter<E> for MinIx {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ClampIx {
     min_ix: Ix,
     max_ix: Ix,
@@ -95,6 +98,7 @@ impl<E: Scalar> CutFilter<E> for ClampIx {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Cutoff<E> {
     cutoff: E,
 }

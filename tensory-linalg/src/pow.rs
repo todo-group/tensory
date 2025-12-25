@@ -49,6 +49,7 @@ impl<C: PowCtxImpl<A, E>, A: TensorRepr, E> PowCtx<A, E> for C {
         unsafe { self.pow_unchecked(a, power, axes_split) }
     }
 }
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 
 pub struct TensorPow<A: TensorRepr, E, M: AxisMapper> {
     a: A,

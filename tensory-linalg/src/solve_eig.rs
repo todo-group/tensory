@@ -58,6 +58,7 @@ impl<C: SolveEigCtxImpl<A>, A: TensorRepr> SolveEigCtx<A> for C {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorSolveEig<A: TensorRepr, M: AxisMapper> {
     a: A,
     v_legs: M,

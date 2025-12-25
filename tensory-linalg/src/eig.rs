@@ -59,6 +59,7 @@ impl<C: EigCtxImpl<A>, A: TensorRepr> EigCtx<A> for C {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorEig<A: TensorRepr, M: AxisMapper> {
     a: A,
     v_legs: M,

@@ -23,7 +23,7 @@ use tensory_core::{
     },
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct VecMapper<T>(Vec<T>);
 impl<T> VecMapper<T> {
     pub unsafe fn from_raw_unchecked(raw: Vec<T>) -> Self {
@@ -59,14 +59,9 @@ fn check_unique<Id: Eq>(legs: &[Id]) -> bool {
     true
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
+#[error("build error")]
 pub struct BuildErr;
-impl Display for BuildErr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "build error")
-    }
-}
-impl Error for BuildErr {}
 
 impl<T: Eq, I: Iterator<Item = T>> BuildableMapper<I> for VecMapper<T> {
     type Err = BuildErr;
@@ -84,14 +79,9 @@ impl<T: Eq, I: Iterator<Item = [T; N]>, const N: usize> SynBuildableMapper<I> fo
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
+#[error("overlay error")]
 pub struct OverlayErr;
-impl Display for OverlayErr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "overlay error")
-    }
-}
-impl Error for OverlayErr {}
 
 unsafe impl<T: Eq> OverlayMapper<2> for VecMapper<T> {
     type Err = OverlayErr;
@@ -216,14 +206,9 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
+#[error("equivalence group error")]
 pub struct EquivGroupErr;
-impl Display for EquivGroupErr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "equivalence group error")
-    }
-}
-impl Error for EquivGroupErr {}
 
 unsafe impl<'a, Id: Eq, K: Iterator<Item = (&'a Id, &'a Id)> + ExactSizeIterator>
     EquivGroupMapper<2, LegSetArg<K>> for VecMapper<Id>
@@ -284,6 +269,7 @@ where
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SplitMapper<Id> {
     first: Vec<Id>,
     second: Vec<Id>,
@@ -293,12 +279,12 @@ unsafe impl<Id: Eq> GroupedMapper<2> for SplitMapper<Id> {
     type Mapper = VecMapper<Id>;
 }
 
-#[derive(Debug, Error)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("post split error")]
-pub struct PostSplitError;
+pub struct PostSplitErr;
 
 unsafe impl<const M: usize, Id: Eq> DecompGroupedMapper<2, M> for SplitMapper<Id> {
-    type Err = PostSplitError;
+    type Err = PostSplitErr;
     fn decomp(
         self,
         conf: DecompConf<2, M, <Self::Mapper as AxisMapper>::Id>,
@@ -318,13 +304,13 @@ unsafe impl<const M: usize, Id: Eq> DecompGroupedMapper<2, M> for SplitMapper<Id
         if middle.iter().all(|x| x.is_ok()) {
             Ok(middle.map(|x| unsafe { x.unwrap_unchecked() }))
         } else {
-            Err(PostSplitError)
+            Err(PostSplitErr)
         }
     }
 }
 
 unsafe impl<const M: usize, Id: Eq + Clone> SolveGroupedMapper<2, M> for SplitMapper<Id> {
-    type Err = PostSplitError;
+    type Err = PostSplitErr;
     fn solve(
         self,
         conf: SolveConf<2, M, <Self::Mapper as AxisMapper>::Id>,
@@ -349,12 +335,12 @@ unsafe impl<const M: usize, Id: Eq + Clone> SolveGroupedMapper<2, M> for SplitMa
         if middle.iter().all(|x| x.is_ok()) {
             Ok(middle.map(|x| unsafe { x.unwrap_unchecked() }))
         } else {
-            Err(PostSplitError)
+            Err(PostSplitErr)
         }
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("replace error")]
 pub struct ReplaceErr;
 
@@ -383,7 +369,7 @@ impl<
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("translation error")]
 pub struct TranslateErr;
 

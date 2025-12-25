@@ -42,16 +42,16 @@ use num_traits::{One, Zero};
 use tensory_core::repr::TensorRepr;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NdDenseRepr<E> {
     data: ArrayD<E>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NdDenseViewRepr<'a, E> {
     data: ArrayViewD<'a, E>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub struct NdDenseViewMutRepr<'a, E> {
     data: ArrayViewMutD<'a, E>,
 }
@@ -261,7 +261,7 @@ impl<'a, E> AxisInfoReprImpl<'a> for NdDenseViewRepr<'a, E> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct NdDenseReprError;
 impl core::error::Error for NdDenseReprError {}
 impl core::fmt::Display for NdDenseReprError {
@@ -571,7 +571,7 @@ impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct NdRuntime;
 unsafe impl Runtime for NdRuntime {}
 

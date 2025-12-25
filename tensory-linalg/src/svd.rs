@@ -57,6 +57,7 @@ impl<C: SvdCtxImpl<A>, A: TensorRepr> SvdCtx<A> for C {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TensorSvd<A: TensorRepr, M: AxisMapper> {
     a: A,
     u_legs: M,
