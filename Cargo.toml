@@ -8,15 +8,14 @@ members = [
     "tensory-normalized",
 
     # test deps
-    "lin-dev-deps","lin-dev-deps-build",
+    "lin-dev-deps",
+    "lin-dev-deps-build",
     # internal
     "examples/*",
     # "benches"
     "experiments/*",
 ]
-exclude= [
-    "experiments/numpy"
-]
+exclude = ["experiments/numpy"]
 
 
 [workspace.package]

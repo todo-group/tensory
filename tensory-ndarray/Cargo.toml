@@ -1,10 +1,10 @@
 [package]
 name = "tensory-ndarray"
-version = { workspace=true }
-repository = { workspace=true }
-authors = { workspace=true }
-license = { workspace=true }
-edition = { workspace=true }
+version = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 ndarray = { workspace = true, features = ["blas"] }
@@ -31,4 +31,4 @@ chrono = { workspace = true }
 lin-dev-deps-build = { workspace = true, optional = true }
 
 [features]
-__test-build = [ "lin-dev-deps", "lin-dev-deps-build" ]
+__test-build = ["lin-dev-deps", "lin-dev-deps-build"]

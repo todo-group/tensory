@@ -1,16 +1,17 @@
 [package]
 name = "tensory-normalized"
-version = { workspace=true }
-repository = { workspace=true }
-authors = { workspace=true }
-license = { workspace=true }
-edition = { workspace=true }
+version = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 tensory-core = { workspace = true }
 tensory-linalg = { workspace = true }
 
 [dev-dependencies]
+thiserror = { workspace = true }
 tensory-basic = { workspace = true }
 tensory-ndarray = { workspace = true }
 num-complex = { workspace = true }

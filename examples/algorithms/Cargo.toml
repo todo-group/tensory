@@ -1,7 +1,7 @@
 [package]
 name = "algorithms"
-version = { workspace=true }
-edition = { workspace=true }
+version = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 tensory-core = { workspace = true }

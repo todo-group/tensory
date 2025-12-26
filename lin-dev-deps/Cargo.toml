@@ -1,29 +1,28 @@
 [package]
 name = "lin-dev-deps"
-edition.workspace = true
-version.workspace = true
-repository.workspace = true
-authors.workspace = true
-license.workspace = true
+version = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 
 links = "linalg-backend"
 
 [dependencies]
-blas-src = { workspace = true, features = [ "openblas" ] }
-openblas-src = { version = "*", features = [ "system" ] }
+blas-src = { workspace = true, features = ["openblas"] }
+openblas-src = { version = "*", features = ["system"] }
 
-# blas-src = { workspace = true, features = [ "accelerate" ] }
+# blas-src = { workspace = true, features = ["accelerate"] }
 # # accelerate-src is not needed since no option
 
-# blas-src = { workspace = true, features = [ "intel-mkl" ] }
-# intel-mkl-src = { version = "*" ,features = ["dynamic","lp64","iomp"] }
+# blas-src = { workspace = true, features = ["intel-mkl"] }
+# intel-mkl-src = { version = "*", features = ["dynamic", "lp64", "iomp"] }
 
-# blas-src = { workspace = true, features = [ "blis" ] }
-# blis-src = { version = "*"  features = [ "system" ] } # !!! not checked !!!
+# blas-src = { workspace = true, features = ["blis"] }
+# blis-src = { version = "*", features = ["system"] }  # !!! not checked !!!
 
-# blas-src = { workspace = true, features = [ "netlib" ] }
-# netlib-src = { version = "*", features = [ "system" ] }
+# blas-src = { workspace = true, features = ["netlib"] }
+# netlib-src = { version = "*", features = ["system"] }
 
-# blas-src = { workspace = true, features = [ "r" ] }
+# blas-src = { workspace = true, features = ["r"] }
 # # r-src is not needed since no option
-

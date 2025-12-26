@@ -1,14 +1,13 @@
 [package]
 name = "tensory-core"
-version = { workspace=true }
-repository = { workspace=true }
-authors = { workspace=true }
-license = { workspace=true }
-edition = { workspace=true }
+version = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
 
 [dependencies]
 thiserror = { workspace = true }
 
 [dev-dependencies]
 tensory-basic = { workspace = true }
-
