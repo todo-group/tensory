@@ -51,14 +51,35 @@ pub struct NdDenseViewRepr<'a, E> {
     data: ArrayViewD<'a, E>,
 }
 
+impl<'a, E> NdDenseViewRepr<'a, E> {
+    pub fn from_raw(data: ArrayViewD<'a, E>) -> Self {
+        Self { data }
+    }
+    pub fn into_raw(self) -> ArrayViewD<'a, E> {
+        self.data
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub struct NdDenseViewMutRepr<'a, E> {
     data: ArrayViewMutD<'a, E>,
 }
 
+impl<'a, E> NdDenseViewMutRepr<'a, E> {
+    pub fn from_raw(data: ArrayViewMutD<'a, E>) -> Self {
+        Self { data }
+    }
+    pub fn into_raw(self) -> ArrayViewMutD<'a, E> {
+        self.data
+    }
+}
+
 impl<E> NdDenseRepr<E> {
     pub fn from_raw(data: ArrayD<E>) -> Self {
         Self { data }
+    }
+    pub fn into_raw(self) -> ArrayD<E> {
+        self.data
     }
     pub fn random(sizes: impl Iterator<Item = usize>) -> Self
     where
