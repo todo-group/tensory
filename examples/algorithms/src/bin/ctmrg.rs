@@ -5,7 +5,7 @@ use tensory_basic::{
 };
 use tensory_core::prelude::*;
 use tensory_linalg::svd::TensorSvdExt;
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
+use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::max_ix};
 
 type Leg = Prime<Id128>;
 type Tensor = NdDenseTensor<f64, VecMapper<Leg>>;
@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
     let dummy = Leg::new();
     let (u, s, v) = (&a)
         .svd(ls![&l, &t], dummy, dummy.prime())?
-        .with((MaxIx(4),))?;
+        .with(max_ix(4))?;
     let factor_initial = s[lm![&dummy=>0,&dummy.prime()=>0]]
         + s[lm![&dummy=>1,&dummy.prime()=>1]]
         + s[lm![&dummy=>2,&dummy.prime()=>2]]
@@ -135,7 +135,7 @@ fn main() -> anyhow::Result<()> {
         let (u, s, v) = (&mat)
             .view()
             .svd(ls![&el, &b], el_new, el_new.prime())?
-            .with((MaxIx(d),))?;
+            .with(max_ix(d))?;
 
         c = (&((&mat * &u)?.with(())?)
             .replace_leg(lm![&er.prime().prime() => el, &r => b, &el_new => el_new.prime()])

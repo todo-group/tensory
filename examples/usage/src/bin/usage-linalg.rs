@@ -110,7 +110,7 @@ fn main() -> anyhow::Result<()> {
     // svd
     {
         let t = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?; // [a,b,c,d]
-        let (u, s, v_dagger) = (&t).svd(ls![&a, &b], e, f)?.with(((),))?; // u:[a,b,e], s:[e,f], v:[f,c,d]
+        let (u, s, v_dagger) = (&t).svd(ls![&a, &b], e, f)?.exec()?; // u:[a,b,e], s:[e,f], v:[f,c,d]
         let t_reconstructed = (&(&u * &s)?.exec()? * &v_dagger)?.exec()?; // [a,b,c,d]
         println!(
             "relative error of eig reconstruct (A ?= U * S * V^†): {}",

@@ -4,16 +4,16 @@ pub mod error;
 
 use alloc::vec::Vec;
 use convert::{mat_to_ten, ten_to_mat};
-use cut_filter::CutFilter;
+use cut_filter::SingularFilter;
 use error::TenalgErr;
 use ndarray::{
-    Array, Array1, Array2, ArrayBase, ArrayD, ArrayView1, ArrayView2, CowArray, Data, Dimension,
-    ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot, s,
+    Array, Array1, Array2, ArrayBase, ArrayD, CowArray, Data, Dimension,
+    ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot,
 };
 use ndarray_linalg::{
     Eig, EighInto, QR, QRInto, SVDDCInto, SVDInto, Scalar, UPLO, conjugate, svd::SVD,
 };
-use num_traits::{ConstZero, clamp};
+use num_traits::ConstZero;
 
 type Result<T> = core::result::Result<T, TenalgErr>;
 
@@ -69,78 +69,7 @@ where
     Ok(z)
 }
 
-fn filter_singular_value<'u, 's, 'v, SU: Data, SS: Data, SV: Data, F: CutFilter<SS::Elem>>(
-    u_mat: &'u ArrayBase<SU, Ix2>,
-    s_vec: &'s ArrayBase<SS, Ix1>,
-    v_mat: &'v ArrayBase<SV, Ix2>,
-    s_filter: F,
-) -> Result<(
-    ArrayView2<'u, SU::Elem>,
-    ArrayView1<'s, SS::Elem>,
-    ArrayView2<'v, SV::Elem>,
-    Ix,
-)>
-where
-    SS::Elem: Scalar,
-    <SS::Elem as Scalar>::Real: ConstZero,
-{
-    // clamp range
-    let s_min_ix = s_filter.min_ix().unwrap_or(1);
-    let s_max_ix = s_filter.max_ix().unwrap_or(s_vec.shape()[0]);
-    if s_min_ix > s_max_ix || s_min_ix < 1 {
-        return Err(TenalgErr::InvalidInput);
-    }
-
-    let mut s_sqsum = <SS::Elem as Scalar>::Real::ZERO;
-    let mut s_valid_ix = 0;
-
-    let mut sq_pre = <SS::Elem as Scalar>::Real::ZERO;
-    for i in 0..s_vec.len() {
-        let sq = s_vec[i].square();
-        if !(sq >= <SS::Elem as Scalar>::Real::ZERO) {
-            // negative or nan sing
-            return Err(TenalgErr::InvalidResult);
-        } else if i != 0 && sq_pre < sq {
-            // sing not ordered
-            return Err(TenalgErr::InvalidResult);
-        }
-        if sq > <SS::Elem as Scalar>::Real::ZERO {
-            s_valid_ix += 1;
-        }
-        s_sqsum += sq;
-        sq_pre = sq;
-    }
-    let s_sqsum = s_sqsum;
-    // if s_sqsum==0 then s_valid_ix==0, so we can ignore this situation
-
-    // j: cut out small sings
-    let mut s_major_ix = s_valid_ix;
-    if let Some(s_cutoff) = s_filter.cutoff() {
-        let mut s_sqsum_err = <SS::Elem as Scalar>::Real::ZERO;
-        for i in (0..s_valid_ix).rev() {
-            let sq = s_vec[i].square();
-            s_sqsum_err += sq;
-            if s_sqsum_err / s_sqsum < s_cutoff {
-                s_major_ix = i;
-            }
-            //println!("i={}, nrsub / nr ={} / {} = {}", i, nrsub, nr, nrsub / nr);
-        }
-    }
-    let s_major_ix = s_major_ix;
-    // println!(
-    //     "s_dim <- {} {} {} {}",
-    //     s_min_dim, s_max_dim, ns_active, ns_large
-    // );
-    let s_ix = clamp(s_major_ix, s_min_ix, s_max_ix);
-
-    let u_mat_narrowed = u_mat.slice(s![.., 0..s_ix]);
-    let s_vec_narrowed = s_vec.slice(s![0..s_ix]);
-    let v_mat_narrowed = v_mat.slice(s![0..s_ix, ..]);
-
-    Ok((u_mat_narrowed, s_vec_narrowed, v_mat_narrowed, s_ix))
-}
-
-pub fn svd<S: Data, D: Dimension, SU: Data, SS: Data, SV: Data, F: CutFilter<SS::Elem>>(
+pub fn svd<S: Data, D: Dimension, SU: Data, SS: Data, SV: Data, F: SingularFilter<SU, SS, SV>>(
     x: &ArrayBase<S, D>,
     left_dim: usize,
     s_filter: F,
@@ -168,7 +97,7 @@ where
     let x_mat = ten_to_mat(x, [left_full_ix, right_full_ix])?;
     if let (Some(u_mat), s_vec, Some(v_mat)) = x_mat.svd(true, true)? {
         let (u_mat_narrowed, s_vec_narrowed, v_mat_narrowed, s_ix) =
-            filter_singular_value(&u_mat, &s_vec, &v_mat, s_filter)?;
+            s_filter.filter(&u_mat, &s_vec, &v_mat)?;
 
         let u_ixs: Vec<Ix> = [left_ixs, &[s_ix]].concat();
         let v_ixs: Vec<Ix> = [&[s_ix], right_ixs].concat();
@@ -182,7 +111,14 @@ where
     }
 }
 
-pub fn into_svd<S: Data, D: Dimension, SU: Data, SS: Data, SV: Data, F: CutFilter<SS::Elem>>(
+pub fn into_svd<
+    S: Data,
+    D: Dimension,
+    SU: Data,
+    SS: Data,
+    SV: Data,
+    F: SingularFilter<SU, SS, SV>,
+>(
     x: ArrayBase<S, D>,
     left_dim: usize,
     s_filter: F,
@@ -211,7 +147,7 @@ where
 
     if let (Some(u_mat), s_vec, Some(v_mat)) = { x_mat.svd_into(true, true)? } {
         let (u_mat_narrowed, s_vec_narrowed, v_mat_narrowed, s_ix) =
-            filter_singular_value(&u_mat, &s_vec, &v_mat, s_filter)?;
+            s_filter.filter(&u_mat, &s_vec, &v_mat)?;
 
         let u_ixs: Vec<Ix> = [left_ixs, &[s_ix]].concat();
         let v_ixs: Vec<Ix> = [&[s_ix], right_ixs].concat();
@@ -225,7 +161,14 @@ where
     }
 }
 
-pub fn into_svddc<S: Data, D: Dimension, SU: Data, SS: Data, SV: Data, F: CutFilter<SS::Elem>>(
+pub fn into_svddc<
+    S: Data,
+    D: Dimension,
+    SU: Data,
+    SS: Data,
+    SV: Data,
+    F: SingularFilter<SU, SS, SV>,
+>(
     x: ArrayBase<S, D>,
     left_dim: usize,
     s_filter: F,
@@ -257,7 +200,7 @@ where
         SVDDCInto::svddc_into(x_mat, ndarray_linalg::JobSvd::Some)?
     } {
         let (u_mat_narrowed, s_vec_narrowed, v_mat_narrowed, s_ix) =
-            filter_singular_value(&u_mat, &s_vec, &v_mat, s_filter)?;
+            s_filter.filter(&u_mat, &s_vec, &v_mat)?;
 
         let u_ixs: Vec<Ix> = [left_ixs, &[s_ix]].concat();
         let v_ixs: Vec<Ix> = [&[s_ix], right_ixs].concat();
@@ -435,10 +378,12 @@ where
 #[cfg(test)]
 mod tests {
 
+    use crate::cut_filter::CutFilter;
+
     use super::*;
-    use cut_filter::{Cutoff, MaxIx};
+    use cut_filter::{cutoff_sq, max_ix};
     //use linalg_ext::SVD;
-    use ndarray::{Array, ArrayD, Ix4, Ix5, IxDyn};
+    use ndarray::{Array, ArrayD, Ix5, IxDyn};
     use ndarray_linalg::{Norm, from_diag, random, random_hermite};
     use num_complex::Complex;
     use std::boxed::Box;
@@ -657,7 +602,7 @@ mod tests {
         println!("{:?}", x.shape());
 
         for i in 1..24 + 1 {
-            let (u, s, v) = svd(&x, 3, MaxIx(i))?;
+            let (u, s, v) = svd(&x, 3, max_ix(i))?;
             //println!("u: {:?}", u.shape());
             //println!("s: {:?}", s.shape());
             //println!("v: {:?}", v.shape());
@@ -701,7 +646,7 @@ mod tests {
 
         {
             let cutoff = 1e-2;
-            let (u, s, v) = svd(&x, 3, Cutoff(cutoff))?;
+            let (u, s, v) = svd(&x, 3, cutoff_sq(cutoff))?;
             //println!("u: {:?}", u.shape());
             //println!("s: {:?}", s.shape());
             //println!("v: {:?}", v.shape());
@@ -728,7 +673,7 @@ mod tests {
         }
 
         {
-            let (u, s, v) = svd(&x, 3, ())?;
+            let (u, s, v) = svd(&x, 3, CutFilter::default())?;
             //println!("u: {:?}", u.shape());
             //println!("s: {:?}", s.shape());
             //println!("v: {:?}", v.shape());

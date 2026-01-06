@@ -6,7 +6,7 @@ use tensory_basic::{
 //use tensory_core::tensor::TensorRepr;
 use tensory_core::prelude::*;
 use tensory_linalg::{conj::TensorConjExt, svd::TensorSvdExt};
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
+use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::max_ix};
 type Leg = Prime<Id128>;
 type Tensor = NdDenseTensor<Complex<f64>, VecMapper<Leg>>;
 fn main() -> anyhow::Result<()> {
@@ -86,7 +86,7 @@ fn main() -> anyhow::Result<()> {
             let dum = Leg::new();
             let (u, s, v) = (&center)
                 .svd(ls![&phys[i], &psi_virt[i]], psi_virt[i + 1], dum)?
-                .with((MaxIx(5),))?;
+                .with(max_ix(5))?;
 
             let s = s.map(|e| e.into());
 

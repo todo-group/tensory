@@ -1,121 +1,164 @@
-use ndarray::Ix;
+use ndarray::{ArrayBase, ArrayView1, ArrayView2, Data, Ix, Ix1, Ix2, s};
 use ndarray_linalg::Scalar;
-
-pub trait CutFilter<E: Scalar> {
-    fn min_ix(&self) -> Option<Ix>;
-    fn max_ix(&self) -> Option<Ix>;
-    fn cutoff(&self) -> Option<E::Real>;
-}
-
-impl<E: Scalar> CutFilter<E> for () {
-    fn min_ix(&self) -> Option<Ix> {
-        None
-    }
-    fn max_ix(&self) -> Option<Ix> {
-        None
-    }
-    fn cutoff(&self) -> Option<E::Real> {
-        None
-    }
-}
-
-impl<E: Scalar, F1: CutFilter<E>, F2: CutFilter<E>> CutFilter<E> for (F1, F2) {
-    fn min_ix(&self) -> Option<Ix> {
-        self.0.min_ix().or(self.1.min_ix())
-    }
-    fn max_ix(&self) -> Option<Ix> {
-        self.0.max_ix().or(self.1.max_ix())
-    }
-    fn cutoff(&self) -> Option<E::Real> {
-        self.0.cutoff().or(self.1.cutoff())
-    }
-}
+use num_traits::{ConstZero, clamp};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct MaxIx {
-    max_ix: Ix,
+pub struct CutFilter<E: Scalar> {
+    pub min_ix: Option<Ix>,
+    pub max_ix: Option<Ix>,
+    pub cutoff: Option<E::Real>,
 }
-
-#[allow(non_snake_case)]
-pub fn MaxIx(max_ix: Ix) -> MaxIx {
-    MaxIx { max_ix }
-}
-
-impl<E: Scalar> CutFilter<E> for MaxIx {
-    fn min_ix(&self) -> Option<Ix> {
-        None
-    }
-    fn max_ix(&self) -> Option<Ix> {
-        Some(self.max_ix)
-    }
-    fn cutoff(&self) -> Option<E::Real> {
-        None
+impl<E: Scalar> Default for CutFilter<E> {
+    fn default() -> Self {
+        CutFilter {
+            min_ix: None,
+            max_ix: None,
+            cutoff: None,
+        }
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct MinIx {
-    min_ix: Ix,
+use crate::TenalgErr;
+
+use super::Result;
+
+pub trait SingularFilter<SU: Data, SS: Data, SV: Data> {
+    fn filter<'u, 's, 'v>(
+        self,
+        u_mat: &'u ArrayBase<SU, Ix2>,
+        s_vec: &'s ArrayBase<SS, Ix1>,
+        v_mat: &'v ArrayBase<SV, Ix2>,
+    ) -> Result<(
+        ArrayView2<'u, SU::Elem>,
+        ArrayView1<'s, SS::Elem>,
+        ArrayView2<'v, SV::Elem>,
+        Ix,
+    )>;
 }
 
-#[allow(non_snake_case)]
-pub fn MinIx(min_ix: Ix) -> MinIx {
-    MinIx { min_ix }
+impl<SU: Data, SS: Data, SV: Data> SingularFilter<SU, SS, SV> for CutFilter<SS::Elem>
+where
+    SS::Elem: Scalar,
+    <SS::Elem as Scalar>::Real: ConstZero,
+{
+    fn filter<'u, 's, 'v>(
+        self,
+        u_mat: &'u ArrayBase<SU, Ix2>,
+        s_vec: &'s ArrayBase<SS, Ix1>,
+        v_mat: &'v ArrayBase<SV, Ix2>,
+    ) -> Result<(
+        ArrayView2<'u, SU::Elem>,
+        ArrayView1<'s, SS::Elem>,
+        ArrayView2<'v, SV::Elem>,
+        Ix,
+    )>
+// where
+    //     SS::Elem: Scalar,
+    //     <SS::Elem as Scalar>::Real: ConstZero,
+    {
+        // clamp range
+        let s_min_ix = self.min_ix.unwrap_or(1);
+        let s_max_ix = self.max_ix.unwrap_or(s_vec.shape()[0]);
+        if s_min_ix > s_max_ix || s_min_ix < 1 {
+            return Err(TenalgErr::InvalidInput);
+        }
+
+        let mut s_sqsum = <SS::Elem as Scalar>::Real::ZERO;
+        let mut s_valid_ix = 0;
+
+        let mut sq_pre = <SS::Elem as Scalar>::Real::ZERO;
+        for i in 0..s_vec.len() {
+            let sq = s_vec[i].square();
+            if !(sq >= <SS::Elem as Scalar>::Real::ZERO) {
+                // negative or nan sing
+                return Err(TenalgErr::InvalidResult);
+            } else if i != 0 && sq_pre < sq {
+                // sing not ordered
+                return Err(TenalgErr::InvalidResult);
+            }
+            if sq > <SS::Elem as Scalar>::Real::ZERO {
+                s_valid_ix += 1;
+            }
+            s_sqsum += sq;
+            sq_pre = sq;
+        }
+        let s_sqsum = s_sqsum;
+        // if s_sqsum==0 then s_valid_ix==0, so we can ignore this situation
+
+        // j: cut out small sings
+        let mut s_major_ix = s_valid_ix;
+        if let Some(s_cutoff) = self.cutoff {
+            let mut s_sqsum_err = <SS::Elem as Scalar>::Real::ZERO;
+            for i in (0..s_valid_ix).rev() {
+                let sq = s_vec[i].square();
+                s_sqsum_err += sq;
+                if s_sqsum_err / s_sqsum < s_cutoff {
+                    s_major_ix = i;
+                }
+                //println!("i={}, nrsub / nr ={} / {} = {}", i, nrsub, nr, nrsub / nr);
+            }
+        }
+        let s_major_ix = s_major_ix;
+        // println!(
+        //     "s_dim <- {} {} {} {}",
+        //     s_min_dim, s_max_dim, ns_active, ns_large
+        // );
+        let s_ix = clamp(s_major_ix, s_min_ix, s_max_ix);
+
+        let u_mat_narrowed = u_mat.slice(s![.., 0..s_ix]);
+        let s_vec_narrowed = s_vec.slice(s![0..s_ix]);
+        let v_mat_narrowed = v_mat.slice(s![0..s_ix, ..]);
+
+        Ok((u_mat_narrowed, s_vec_narrowed, v_mat_narrowed, s_ix))
+    }
 }
 
-impl<E: Scalar> CutFilter<E> for MinIx {
-    fn min_ix(&self) -> Option<Ix> {
-        Some(self.min_ix)
+pub fn max_ix<E: Scalar>(max_ix: Ix) -> CutFilter<E> {
+    CutFilter {
+        min_ix: None,
+        max_ix: Some(max_ix),
+        cutoff: None,
     }
-    fn max_ix(&self) -> Option<Ix> {
-        None
+}
+pub fn min_ix<E: Scalar>(min_ix: Ix) -> CutFilter<E> {
+    CutFilter {
+        min_ix: Some(min_ix),
+        max_ix: None,
+        cutoff: None,
     }
-    fn cutoff(&self) -> Option<E::Real> {
-        None
+}
+pub fn clamp_ix<E: Scalar>(min_ix: Ix, max_ix: Ix) -> CutFilter<E> {
+    CutFilter {
+        min_ix: Some(min_ix),
+        max_ix: Some(max_ix),
+        cutoff: None,
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct ClampIx {
-    min_ix: Ix,
-    max_ix: Ix,
-}
-
-#[allow(non_snake_case)]
-pub fn ClampIx(min_ix: Ix, max_ix: Ix) -> ClampIx {
-    ClampIx { min_ix, max_ix }
-}
-
-impl<E: Scalar> CutFilter<E> for ClampIx {
-    fn min_ix(&self) -> Option<Ix> {
-        Some(self.min_ix)
-    }
-    fn max_ix(&self) -> Option<Ix> {
-        Some(self.max_ix)
-    }
-    fn cutoff(&self) -> Option<E::Real> {
-        None
+pub fn cutoff_sq<E: Scalar>(cutoff: E::Real) -> CutFilter<E> {
+    CutFilter {
+        min_ix: None,
+        max_ix: None,
+        cutoff: Some(cutoff),
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Cutoff<E> {
-    cutoff: E,
-}
-
-#[allow(non_snake_case)]
-pub fn Cutoff<E>(cutoff: E) -> Cutoff<E> {
-    Cutoff { cutoff }
-}
-
-impl<E: Scalar> CutFilter<E> for Cutoff<E::Real> {
-    fn min_ix(&self) -> Option<Ix> {
-        None
-    }
-    fn max_ix(&self) -> Option<Ix> {
-        None
-    }
-    fn cutoff(&self) -> Option<E::Real> {
-        Some(self.cutoff)
+impl<SU: Data, SS: Data, SV: Data> SingularFilter<SU, SS, SV> for ()
+where
+    SS::Elem: Scalar,
+    <SS::Elem as Scalar>::Real: ConstZero,
+{
+    fn filter<'u, 's, 'v>(
+        self,
+        u_mat: &'u ArrayBase<SU, Ix2>,
+        s_vec: &'s ArrayBase<SS, Ix1>,
+        v_mat: &'v ArrayBase<SV, Ix2>,
+    ) -> Result<(
+        ArrayView2<'u, SU::Elem>,
+        ArrayView1<'s, SS::Elem>,
+        ArrayView2<'v, SV::Elem>,
+        Ix,
+    )> {
+        (CutFilter::default()).filter(u_mat, s_vec, v_mat)
     }
 }

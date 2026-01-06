@@ -19,12 +19,17 @@ use tensory_linalg::{
 
 use crate::{
     NdDenseRepr, NdDenseViewRepr, NdRuntime,
-    cut_filter::CutFilter,
+    cut_filter::{CutFilter, SingularFilter},
     tenalg::{conj, diag_map, error::TenalgErr, into_eig, into_eigh, into_qr, into_svddc},
 };
 
-unsafe impl<'a, E: Scalar + Lapack, C: CutFilter<<E as Scalar>::Real>>
-    SvdCtxImpl<NdDenseViewRepr<'a, E>> for (C,)
+pub struct Filter<T>(T);
+
+unsafe impl<
+    'a,
+    E: Scalar + Lapack,
+    F: SingularFilter<OwnedRepr<E>, OwnedRepr<E::Real>, OwnedRepr<E>>,
+> SvdCtxImpl<NdDenseViewRepr<'a, E>> for Filter<F>
 where
     E::Real: ConstZero,
 {
@@ -72,15 +77,50 @@ where
     }
 }
 
-impl<'a, E: Scalar + Lapack, C: CutFilter<<E as Scalar>::Real>>
+unsafe impl<'a, E: Scalar + Lapack> SvdCtxImpl<NdDenseViewRepr<'a, E>> for ()
+where
+    E::Real: ConstZero,
+{
+    type U = NdDenseRepr<E>;
+    type S = NdDenseRepr<E::Real>;
+    type V = NdDenseRepr<E>;
+    type Err = TenalgErr;
+
+    unsafe fn svd_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        axes_split: GroupedAxes<2>,
+    ) -> Result<(Self::U, Self::S, Self::V), Self::Err> {
+        unsafe { Filter(()).svd_unchecked(a, axes_split) }
+    }
+}
+unsafe impl<'a, E: Scalar + Lapack> SvdCtxImpl<NdDenseViewRepr<'a, E>> for CutFilter<E::Real>
+where
+    E::Real: ConstZero,
+{
+    type U = NdDenseRepr<E>;
+    type S = NdDenseRepr<E::Real>;
+    type V = NdDenseRepr<E>;
+    type Err = TenalgErr;
+
+    unsafe fn svd_unchecked(
+        self,
+        a: NdDenseViewRepr<'a, E>,
+        axes_split: GroupedAxes<2>,
+    ) -> Result<(Self::U, Self::S, Self::V), Self::Err> {
+        unsafe { Filter(self).svd_unchecked(a, axes_split) }
+    }
+}
+
+impl<'a, E: Scalar + Lapack, C: SingularFilter<OwnedRepr<E>, OwnedRepr<E::Real>, OwnedRepr<E>>>
     SvdWithOptionRuntime<NdDenseViewRepr<'a, E>, C> for NdRuntime
 where
     E::Real: ConstZero,
 {
-    type Ctx = (C,);
+    type Ctx = Filter<C>;
 
     fn svd_ctx(&self, opt: C) -> Self::Ctx {
-        (opt,)
+        Filter(opt)
     }
 }
 
@@ -448,7 +488,7 @@ mod tests {
         let us = Leg::new();
         let vs = Leg::new();
 
-        let (u, s, v) = t.view().svd(ls![&a, &b], us, vs)?.with(((),))?;
+        let (u, s, v) = t.view().svd(ls![&a, &b], us, vs)?.exec()?;
 
         //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 

@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
 
         for _ in 0..repeat {
             let pre = Instant::now();
-            black_box((&tx).svd(ls![&a_x, &b_x], "e", "f")?.with(((),)).unwrap());
+            black_box((&tx).svd(ls![&a_x, &b_x], "e", "f")?.exec()?);
             let post = Instant::now();
             t_tmp += post.duration_since(pre);
         }
