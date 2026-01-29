@@ -18,18 +18,42 @@
         "type": "github"
       }
     },
+    "nix-jyjyjcr": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1768823449,
+        "narHash": "sha256-XDw8J/CQrLe07S2MQw2qfvx6FNtxmhnG8f+uI5tKQMc=",
+        "owner": "jyjyjcr",
+        "repo": "nix-jyjyjcr",
+        "rev": "3919619a0093a10d71d70ec3929d473e6c45541e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "jyjyjcr",
+        "ref": "dev/alt-shell",
+        "repo": "nix-jyjyjcr",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1766532406,
-        "narHash": "sha256-acLU/ag9VEoKkzOD202QASX25nG1eArXg5A0mHjKgxM=",
+        "lastModified": 1768940263,
+        "narHash": "sha256-sJERJIYTKPFXkoz/gBaBtRKke82h4DkX3BBSsKbfbvI=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "8142186f001295e5a3239f485c8a49bf2de2695a",
+        "rev": "3ceaaa8bc963ced4d830e06ea2d0863b6490ff03",
         "type": "github"
       },
       "original": {
         "owner": "nixos",
-        "ref": "nixpkgs-unstable",
+        "ref": "nixos-25.11",
         "repo": "nixpkgs",
         "type": "github"
       }
@@ -37,6 +61,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "nix-jyjyjcr": "nix-jyjyjcr",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay"
       }
@@ -48,11 +73,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1766630657,
-        "narHash": "sha256-wW15buPGU29v0XuAmDkc30+d5j4Tmg/V8AkpHH+hDWY=",
+        "lastModified": 1769050281,
+        "narHash": "sha256-1H8DN4UZgEUqPUA5ecHOufLZMscJ4IlcGaEftaPtpBY=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "3bf67c5e473f29ca79ff15904f3072d87cf6d087",
+        "rev": "6deef0585c52d9e70f96b6121207e1496d4b0c49",
         "type": "github"
       },
       "original": {
