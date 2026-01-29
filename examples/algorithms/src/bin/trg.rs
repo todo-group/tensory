@@ -4,7 +4,7 @@ use tensory_basic::{
 };
 use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::MaxIx};
+use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::max_ix};
 
 type Leg = Prime<Id128>;
 type Tensor = NdDenseTensor<f64, VecMapper<Leg>>;
@@ -60,13 +60,13 @@ fn main() -> anyhow::Result<()> {
             .replace_leg(lm![&x => x.prime(),&y => y.prime(), &x.prime() => x, &y.prime() => y])
             .unwrap())
         .svd_with_more_ids(ls![&x, &y], x_new, x_new.prime(), dum, dum)?
-        .with((MaxIx(d),))?;
+        .with(max_ix(d))?;
         let A = u;
         let B = (&s * &v)?.exec()?;
 
         let (u, s, v) = (&z)
             .svd_with_more_ids(ls![&x, &y.prime()], y_new, y_new.prime(), dum, dum)?
-            .with((MaxIx(d),))?;
+            .with(max_ix(d))?;
 
         let C = u;
         let D = (&s * &v)?.exec()?;
