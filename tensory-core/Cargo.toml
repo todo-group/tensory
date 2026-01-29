@@ -9,5 +9,6 @@ edition = { workspace = true }
 [dependencies]
 thiserror = { workspace = true }
 
-[dev-dependencies]
-tensory-basic = { workspace = true }
+# [dev-dependencies]
+# tensory-basic = { workspace = true }
+#tensory-ndarray = { workspace = true }

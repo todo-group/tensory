@@ -167,8 +167,14 @@ pub struct LegErr;
 
 //     use crate::leg::LegAlloc;
 
+//     use tensory_basic::mapper::VecMapper;
+
 //     #[test]
 //     fn leg_alloc_test() {
+//         use crate::mapper::AxisMapper;
+
+//         let x = VecMapper::from_raw(vec![0, 1, 2]).naxes();
+
 //         let legs = vec![1, 2, 3];
 //         let mut leg_alloc = LegAlloc::from_raw(legs.clone()).unwrap();
 //         assert_eq!(leg_alloc.len(), 3);
