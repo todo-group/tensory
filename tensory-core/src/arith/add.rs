@@ -30,7 +30,7 @@ pub unsafe trait AddCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
         axis_mapping: OverlayAxisMapping<2>,
     ) -> Result<Self::Res, Self::Err>;
 }
-/// Safe version if `AddCtxImpl`.
+/// Safe version of `AddCtxImpl`.
 ///
 /// The blanket implementation checks input and panic if the condition is not satisfied.
 pub trait AddCtx<Lhs: TensorRepr, Rhs: TensorRepr>: AddCtxImpl<Lhs, Rhs> {
