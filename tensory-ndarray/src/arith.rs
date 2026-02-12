@@ -1,5 +1,8 @@
 use alloc::vec::Vec;
-use core::ops::{Add, Div, Mul, Neg, Sub};
+use core::{
+    convert::Infallible,
+    ops::{Add, Div, Mul, Neg, Sub},
+};
 
 use ndarray::{ScalarOperand, Zip};
 use ndarray_linalg::{Lapack, Scalar};
@@ -7,8 +10,8 @@ use num_traits::ConstZero;
 use tensory_core::{
     arith::{
         AddCtxImpl, AddRuntime, CommutativeScalarDivCtx, CommutativeScalarDivRuntime,
-        CommutativeScalarMulCtx, CommutativeScalarMulRuntime, MulCtxImpl, MulRuntime, NegCtx,
-        NegRuntime, SubCtxImpl, SubRuntime,
+        CommutativeScalarMulCtx, CommutativeScalarMulRuntime, LeftScalarMulCtx, MulCtxImpl,
+        MulRuntime, NegCtx, NegRuntime, RightScalarMulCtx, SubCtxImpl, SubRuntime,
     },
     mapper::ConnectAxisOrigin,
 };
@@ -20,7 +23,7 @@ use crate::{
 
 unsafe impl<'l, 'r, E> AddCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
 where
-    for<'a> &'a E: Add<&'a E, Output = E> + Clone,
+    &'l E: Add<&'r E, Output = E>,
 {
     type Res = NdDenseRepr<E>;
     type Err = TenalgErr;
@@ -41,7 +44,7 @@ where
 
         if lhs_raw.dim() == rhs_raw.dim() {
             Ok(NdDenseRepr {
-                data: Zip::from(&lhs_raw).and(&rhs_raw).map_collect(|l, r| l + r),
+                data: Zip::from(lhs_raw).and(rhs_raw).map_collect(|l, r| l + r),
             })
         } else {
             Err(TenalgErr::InvalidInput)
@@ -51,7 +54,7 @@ where
 
 unsafe impl<'l, 'r, E> SubCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
 where
-    for<'a> &'a E: Sub<&'a E, Output = E> + Clone,
+    &'l E: Sub<&'r E, Output = E>,
 {
     type Res = NdDenseRepr<E>;
     type Err = TenalgErr;
@@ -72,7 +75,7 @@ where
 
         if lhs_raw.dim() == rhs_raw.dim() {
             Ok(NdDenseRepr {
-                data: Zip::from(&lhs_raw).and(&rhs_raw).map_collect(|l, r| l - r),
+                data: Zip::from(lhs_raw).and(rhs_raw).map_collect(|l, r| l - r),
             })
         } else {
             Err(TenalgErr::InvalidInput)
@@ -82,31 +85,45 @@ where
 
 unsafe impl<E: Neg<Output = E> + Clone> NegCtx<NdDenseRepr<E>> for () {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgErr;
+    type Err = Infallible;
 
     fn negate(self, a: NdDenseRepr<E>) -> Result<Self::Res, Self::Err> {
         Ok(NdDenseRepr { data: -(a.data) })
     }
 }
 
-unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> CommutativeScalarMulCtx<NdDenseRepr<E>, E>
-    for ()
-{
+unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> LeftScalarMulCtx<NdDenseRepr<E>, E> for () {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgErr;
+    type Err = Infallible;
 
-    fn scalar_mul(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
+    fn left_scalar_mul(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
         Ok(NdDenseRepr {
             data: a.data * scalar,
         })
     }
+}
+unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> RightScalarMulCtx<NdDenseRepr<E>, E>
+    for ()
+{
+    type Res = NdDenseRepr<E>;
+    type Err = Infallible;
+
+    fn right_scalar_mul(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
+        Ok(NdDenseRepr {
+            data: a.data * scalar,
+        })
+    }
+}
+unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> CommutativeScalarMulCtx<NdDenseRepr<E>, E>
+    for ()
+{
 }
 
 unsafe impl<E: ScalarOperand + Div<Output = E> + Clone> CommutativeScalarDivCtx<NdDenseRepr<E>, E>
     for ()
 {
     type Res = NdDenseRepr<E>;
-    type Err = TenalgErr;
+    type Err = Infallible;
 
     fn scalar_div(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
         Ok(NdDenseRepr {
@@ -115,9 +132,7 @@ unsafe impl<E: ScalarOperand + Div<Output = E> + Clone> CommutativeScalarDivCtx<
     }
 }
 
-unsafe impl<'l, 'r, E: Lapack + Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>
-    for ()
-{
+unsafe impl<'l, 'r, E: Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for () {
     type Res = NdDenseRepr<E>;
     type Err = TenalgErr;
 
@@ -205,14 +220,14 @@ unsafe impl<'l, 'r, E: Lapack + Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDen
 
 impl<'l, 'r, E> AddRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for NdRuntime
 where
-    for<'a> &'a E: Add<Output = E>,
+    &'l E: Add<&'r E, Output = E>,
 {
     type Ctx = ();
     fn add_ctx(&self) -> Self::Ctx {}
 }
 impl<'l, 'r, E> SubRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for NdRuntime
 where
-    for<'a> &'a E: Sub<Output = E>,
+    &'l E: Sub<&'r E, Output = E>,
 {
     type Ctx = ();
     fn sub_ctx(&self) -> Self::Ctx {}

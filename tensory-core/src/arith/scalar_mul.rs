@@ -96,31 +96,54 @@ impl<A: TensorRepr, M: AxisMapper, E, C: RightScalarMulCtx<A, E>> TensorTask<C>
 /// # Safety
 ///
 /// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
-pub unsafe trait CommutativeScalarMulCtx<A: TensorRepr, E> {
-    /// The type of the result tensor representation.
-    type Res: TensorRepr;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
+pub unsafe trait CommutativeScalarMulCtx<A: TensorRepr, E>:
+    LeftScalarMulCtx<A, E>
+    + RightScalarMulCtx<
+        A,
+        E,
+        Res = <Self as LeftScalarMulCtx<A, E>>::Res,
+        Err = <Self as LeftScalarMulCtx<A, E>>::Err,
+    > + Sized
+{
+    // /// The type of the result tensor representation.
+    // type Res: TensorRepr;
+    // /// The type of the error returned by the context. (considered as internal error)
+    // type Err;
 
     /// Performs left scalar multiplication operation on the tensor `a`.
-    fn scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
-}
-unsafe impl<A: TensorRepr, E, C: CommutativeScalarMulCtx<A, E>> LeftScalarMulCtx<A, E> for C {
-    type Res = C::Res;
-    type Err = C::Err;
-
-    fn left_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err> {
-        self.scalar_mul(a, scalar)
+    fn scalar_mul(
+        self,
+        a: A,
+        scalar: E,
+    ) -> Result<<Self as LeftScalarMulCtx<A, E>>::Res, <Self as LeftScalarMulCtx<A, E>>::Err> {
+        self.left_scalar_mul(a, scalar)
     }
 }
-unsafe impl<A: TensorRepr, E, C: CommutativeScalarMulCtx<A, E>> RightScalarMulCtx<A, E> for C {
-    type Res = C::Res;
-    type Err = C::Err;
 
-    fn right_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err> {
-        self.scalar_mul(a, scalar)
-    }
-}
+// pub unsafe trait ScalarMulCtxDerive<A: TensorRepr, E> {
+//     type Res: TensorRepr;
+//     type Err;
+
+//     fn scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
+// }
+
+// unsafe impl<A: TensorRepr, E, C: ScalarMulCtxDerive<A, E>> LeftScalarMulCtx<A, E> for C {
+//     type Res = <C as ScalarMulCtxDerive<A, E>>::Res;
+//     type Err = <C as ScalarMulCtxDerive<A, E>>::Err;
+
+//     fn left_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err> {
+//         self.scalar_mul(a, scalar)
+//     }
+// }
+// unsafe impl<A: TensorRepr, E, C: ScalarMulCtxDerive<A, E>> RightScalarMulCtx<A, E> for C {
+//     type Res = <C as ScalarMulCtxDerive<A, E>>::Res;
+//     type Err = <C as ScalarMulCtxDerive<A, E>>::Err;
+
+//     fn right_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err> {
+//         self.scalar_mul(a, scalar)
+//     }
+// }
+// unsafe impl<A: TensorRepr, E, C: ScalarMulCtxDerive<A, E>> CommutativeScalarMulCtx<A, E> for C {}
 
 /// Extension trait for left/right scalar multiplication operation on tensors.
 pub trait TensorScalarMulExt<E> {
