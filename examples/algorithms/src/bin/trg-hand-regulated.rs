@@ -4,19 +4,12 @@ use tensory_basic::{
 };
 use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
-use tensory_ndarray::{
-    NdDenseTensor, NdDenseTensorExt,
-    cut_filter::max_ix,
-    regulated::{L2Regulator, LnCoeff},
-};
-use tensory_regulated::{
-    RegulatedTensorExt, TensorDefaultRegulatedTask, TensorRegulatedTask, ToRegulatedTensorExt,
-};
+use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::max_ix};
 
 type Leg = Prime<Id128>;
 type Tensor = NdDenseTensor<f64, VecMapper<Leg>>;
 fn main() -> anyhow::Result<()> {
-    let t: usize = 80;
+    let t: usize = 11;
     let d: usize = 20;
 
     let mut x = Leg::new();
@@ -49,8 +42,15 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    for i in 0..t {
-        std::println!("loop={}", i);
+    let z_norm = (&z).norm().exec()?;
+    z = (z / z_norm).exec()?;
+    let mut coeff_log = z_norm.ln();
+
+    for _renorm in 0..t {
+        std::println!("x {:?}", x);
+        std::println!("y {:?}", y);
+        std::println!("legs {:?}", z.mapper());
+        std::println!("order {}", z.repr().naxes());
 
         let x_new = Leg::new();
         let y_new = Leg::new();
@@ -69,29 +69,38 @@ fn main() -> anyhow::Result<()> {
         let (u, s, v) = (&z)
             .svd_with_more_ids(ls![&x, &y.prime()], y_new, y_new.prime(), dum, dum)?
             .with(max_ix(d))?;
+
         let C = u;
         let D = (&s * &v)?.exec()?;
 
-        // bound tensor should provide common single runtime const reference
-        // and options are passed in first call fn
-        // then convert it to the pair of runtime and option
-        // this tuple should impl XxxCtx
+        let z_tmp = (&(&A * &D)?.exec()? * &(&B * &C)?.exec()?)?.exec()?;
 
-        z = (&(&A * &D)?.exec()? * &(&B * &C)?.exec()?)?.exec()?;
+        let z_norm = (&z_tmp).norm().exec()?;
+
+        z = (z_tmp / z_norm).exec()?;
 
         x = x_new;
         y = y_new;
 
-        let eye_x = Tensor::eye(lm![[x,x.prime()]=>z.axis_info(&x).unwrap()])?;
-        let eye_y = Tensor::eye(lm![[y,y.prime()]=>z.axis_info(&y).unwrap()])?;
+        coeff_log *= 2.0;
+        coeff_log += z_norm.ln();
 
-        let z_core = (&(&z * &eye_x)?.exec()? * &eye_y)?.exec()?;
-
-        std::println!(
-            "Log partition function: {}",
-            z_core[lm![]].ln() / 2.0f64.powi((i + 2) as i32)
-        );
+        println!("renormed norm {}", z_norm);
     }
+
+    let eye_x = Tensor::eye(lm![[x,x.prime()]=>d])?;
+    let eye_y = Tensor::eye(lm![[y,y.prime()]=>d])?;
+
+    let z = (&(&z * &eye_x)?.exec()? * &eye_y)?.exec()?;
+
+    coeff_log += (&z).norm().exec()?.ln();
+
+    std::println!("Final tensor: {:?}", z[lm![]]);
+    std::println!(
+        "Log partition function: {}",
+        coeff_log / 2.0f64.powi((t + 1) as i32)
+    );
+
     Ok(())
 }
 

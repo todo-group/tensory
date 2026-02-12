@@ -48,6 +48,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
     }
+    let mut z = z.regulate::<LnCoeff<f64>, L2Regulator<_>>();
 
     for i in 0..t {
         std::println!("loop={}", i);
@@ -62,13 +63,14 @@ fn main() -> anyhow::Result<()> {
             .replace_leg(lm![&x => x.prime(),&y => y.prime(), &x.prime() => x, &y.prime() => y])
             .unwrap())
         .svd_with_more_ids(ls![&x, &y], x_new, x_new.prime(), dum, dum)?
-        .with(max_ix(d))?;
+        .with_regulated(max_ix(d))?;
         let A = u;
         let B = (&s * &v)?.exec()?;
 
         let (u, s, v) = (&z)
             .svd_with_more_ids(ls![&x, &y.prime()], y_new, y_new.prime(), dum, dum)?
-            .with(max_ix(d))?;
+            .with_regulated(max_ix(d))?;
+
         let C = u;
         let D = (&s * &v)?.exec()?;
 
@@ -82,16 +84,18 @@ fn main() -> anyhow::Result<()> {
         x = x_new;
         y = y_new;
 
-        let eye_x = Tensor::eye(lm![[x,x.prime()]=>z.axis_info(&x).unwrap()])?;
-        let eye_y = Tensor::eye(lm![[y,y.prime()]=>z.axis_info(&y).unwrap()])?;
+        let eye_x = Tensor::eye(lm![[x,x.prime()]=>z.axis_info(&x).unwrap()])?.regulate();
+        let eye_y = Tensor::eye(lm![[y,y.prime()]=>z.axis_info(&y).unwrap()])?.regulate();
 
         let z_core = (&(&z * &eye_x)?.exec()? * &eye_y)?.exec()?;
+        let (z_core, coeff) = z_core.into_inner_tensor();
 
         std::println!(
             "Log partition function: {}",
-            z_core[lm![]].ln() / 2.0f64.powi((i + 2) as i32)
+            (coeff.ln() + z_core[lm![]].ln()) / 2.0f64.powi((i + 2) as i32)
         );
     }
+
     Ok(())
 }
 
