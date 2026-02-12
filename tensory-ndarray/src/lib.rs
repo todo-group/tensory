@@ -13,6 +13,8 @@ pub mod arith;
 
 pub mod linalg;
 
+pub mod regulated;
+
 pub mod cut_filter {
     pub use crate::tenalg::cut_filter::*;
 }

@@ -13,6 +13,7 @@ blas-src = { workspace = true }
 num-traits = { workspace = true }
 tensory-core = { workspace = true }
 tensory-linalg = { workspace = true }
+tensory-regulated = { workspace = true }
 
 rand = { workspace = true }
 itertools = { workspace = true }
