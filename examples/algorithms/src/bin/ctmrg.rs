@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
 
     // println!("a factor {}", factor_initial);
 
-    a = (a / (factor_initial,)).with(())?;
+    a = (a / (factor_initial,)).exec()?;
 
     let mut c = Tensor::zero(lm![el=> 2, er=> 2]).unwrap();
 
@@ -85,7 +85,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     //normalization
-    c = (c / (factor_initial,)).with(())?;
+    c = (c / (factor_initial,)).exec()?;
 
     let mut etn = Tensor::zero(lm![el=> 2, er=> 2, ea=>2]).unwrap();
     for el_i in 0..2 {
@@ -104,7 +104,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     //normalization
-    etn = (etn / (factor_initial,)).with(())?;
+    etn = (etn / (factor_initial,)).exec()?;
 
     // normalization
     // let dummy = Leg::new();
@@ -112,8 +112,8 @@ fn main() -> anyhow::Result<()> {
     // let factor = s[ls![&dummy=>0,&dummy.prime()=>0]];
     // println!("initial factor {}", factor);
 
-    // c = (c / (factor,)).with(())?;
-    // etn = ((etn) / (factor.sqrt(),)).with(())?;
+    // c = (c / (factor,)).exec()?;
+    // etn = ((etn) / (factor.sqrt(),)).exec()?;
 
     let mut factors: Vec<f64> = Vec::with_capacity(step);
     let mut e_factors: Vec<f64> = Vec::with_capacity(step);
@@ -123,13 +123,13 @@ fn main() -> anyhow::Result<()> {
         // std::println!("order c {}", c.repr().naxes());
         // std::println!("order et {}", etn.repr().naxes());
 
-        let ec = (&etn * &c.replace_leg(lm![&er => er.prime()]).unwrap())?.with(())?;
+        let ec = (&etn * &c.replace_leg(lm![&er => er.prime()]).unwrap())?.exec()?;
         let ece = (&ec
             .replace_leg(lm![&er => er.prime().prime(), &er.prime() => er, &ea => ea.prime()])
             .unwrap()
             * &etn)?
-            .with(())?;
-        let mat = (&ece.replace_leg(lm![&ea => l, &ea.prime() => t]).unwrap() * &a)?.with(())?;
+            .exec()?;
+        let mat = (&ece.replace_leg(lm![&ea => l, &ea.prime() => t]).unwrap() * &a)?.exec()?;
 
         let el_new = Leg::new();
         let (u, s, v) = (&mat)
@@ -137,16 +137,16 @@ fn main() -> anyhow::Result<()> {
             .svd(ls![&el, &b], el_new, el_new.prime())?
             .with(max_ix(d))?;
 
-        c = (&((&mat * &u)?.with(())?)
+        c = (&((&mat * &u)?.exec()?)
             .replace_leg(lm![&er.prime().prime() => el, &r => b, &el_new => el_new.prime()])
             .unwrap()
             * &u)?
-            .with(())?;
-        etn = (&((&((&etn * &u)?.with(())?)
+            .exec()?;
+        etn = (&((&((&etn * &u)?.exec()?)
             .replace_leg(lm![&b => l, &ea => t])
             .unwrap()
             * &a)?
-            .with(())?)
+            .exec()?)
         .replace_leg(lm![
         &er => el,
         &b => ea,
@@ -154,7 +154,7 @@ fn main() -> anyhow::Result<()> {
         ])
         .unwrap()
             * &u.replace_leg(lm![&el_new => el_new.prime()]).unwrap())?
-            .with(())?;
+            .exec()?;
 
         el = el_new;
         er = el_new.prime();
@@ -162,16 +162,16 @@ fn main() -> anyhow::Result<()> {
         let factor = s[lm![&el_new=>0,&el_new.prime()=>0]];
         //println!("factor at {}, {}", _rgstep, factor);
 
-        c = (c / (factor,)).with(())?;
-        etn = ((etn) / (factor.sqrt(),)).with(())?;
+        c = (c / (factor,)).exec()?;
+        etn = ((etn) / (factor.sqrt(),)).exec()?;
 
         factors.push(factor.ln());
         e_factor_sum += 0.5 * factor.ln();
         e_factors.push(e_factor_sum);
 
         let cp = c.clone();
-        let c2 = (&c * &cp.replace_leg(lm![&el => el.prime(), &er => el]).unwrap())?.with(())?;
-        let c4 = (&c2 * &c2)?.with(())?;
+        let c2 = (&c * &cp.replace_leg(lm![&el => el.prime(), &er => el]).unwrap())?.exec()?;
+        let c4 = (&c2 * &c2)?.exec()?;
 
         let L1 = 2 * (_rgstep + 2);
         let sum_f = c4[lm![]];
