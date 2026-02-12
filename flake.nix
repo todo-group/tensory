@@ -29,6 +29,7 @@
             (pkgs.rust-bin.stable.latest.default.override {
               extensions = [ "rust-src" ];
             })
+            pkgs.cargo-edit
             # for openblas
             pkgs.openblas
             # for openblas 64-bit

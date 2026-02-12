@@ -7,7 +7,7 @@ use convert::{mat_to_ten, ten_to_mat};
 use cut_filter::SingularFilter;
 use error::TenalgErr;
 use ndarray::{
-    Array, Array1, Array2, ArrayBase, ArrayD, CowArray, Data, Dimension,
+    Array, Array1, Array2, ArrayBase, ArrayD, ArrayRef, CowArray, Data, Dimension,
     ErrorKind::IncompatibleShape, Ix, Ix1, Ix2, ShapeError, linalg::Dot,
 };
 use ndarray_linalg::{
@@ -80,7 +80,7 @@ where
     SV::Elem: Clone,
     SS::Elem: Clone + Scalar,
     <SS::Elem as Scalar>::Real: ConstZero,
-    for<'x> CowArray<'x, S::Elem, Ix2>:
+    ArrayRef<S::Elem, Ix2>:
         SVD<U = ArrayBase<SU, Ix2>, Sigma = ArrayBase<SS, Ix1>, VT = ArrayBase<SV, Ix2>>,
 {
     let x_ixs = x.shape();
@@ -318,8 +318,7 @@ pub fn into_eig<S: Data, D: Dimension, SE: Data, SV: Data>(
 where
     S::Elem: Clone,
     SV::Elem: Clone,
-    for<'x> CowArray<'x, S::Elem, Ix2>:
-        Eig<EigVal = ArrayBase<SE, Ix1>, EigVec = ArrayBase<SV, Ix2>>,
+    ArrayRef<S::Elem, Ix2>: Eig<EigVal = ArrayBase<SE, Ix1>, EigVec = ArrayBase<SV, Ix2>>,
 {
     let x_ixs = x.shape();
     let x_dim = x_ixs.len();
