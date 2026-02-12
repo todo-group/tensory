@@ -1,5 +1,5 @@
 [package]
-name = "tensory-normalized"
+name = "tensory-regulated"
 version = { workspace = true }
 repository = { workspace = true }
 authors = { workspace = true }

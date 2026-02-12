@@ -5,7 +5,7 @@ members = [
     "tensory-linalg",
     "tensory-ndarray",
     "tensory-basic",
-    "tensory-normalized",
+    "tensory-regulated",
 
     # test deps
     "lin-dev-deps",
@@ -30,6 +30,7 @@ tensory-core = { path = "tensory-core" }
 tensory-basic = { path = "tensory-basic" }
 tensory-linalg = { path = "tensory-linalg" }
 tensory-ndarray = { path = "tensory-ndarray" }
+tensory-regulated = { path = "tensory-regulated" }
 
 lin-dev-deps = { path = "lin-dev-deps" }
 lin-dev-deps-build = { path = "lin-dev-deps-build" }
