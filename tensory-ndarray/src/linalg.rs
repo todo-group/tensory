@@ -161,9 +161,9 @@ unsafe impl<'a, E: Scalar + Lapack> QrCtxImpl<NdDenseViewRepr<'a, E>> for () {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct HermiteEig;
+pub struct Hermite;
 
-unsafe impl<'a, E: Scalar + Lapack> EigCtxImpl<NdDenseViewRepr<'a, E>> for HermiteEig {
+unsafe impl<'a, E: Scalar + Lapack> EigCtxImpl<NdDenseViewRepr<'a, E>> for Hermite {
     type V = NdDenseRepr<E>;
     type D = NdDenseRepr<E::Real>;
     type VC = NdDenseRepr<E>;
@@ -274,9 +274,9 @@ unsafe impl<'a, E: Scalar> ConjCtx<NdDenseViewRepr<'a, E>> for () {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct DiagExp;
+pub struct Diag;
 
-unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for DiagExp {
+unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for Diag {
     type Res = NdDenseRepr<E>;
 
     type Err = TenalgErr;
@@ -308,13 +308,11 @@ unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for DiagExp {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct DiagPow;
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct DiagPowF;
+pub struct PowF;
 //#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 //pub struct DiagPowC;
 
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for DiagPow {
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for Diag {
     type Res = NdDenseRepr<E>;
 
     type Err = TenalgErr;
@@ -338,7 +336,7 @@ unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for DiagPow {
         Ok(NdDenseRepr { data: raw })
     }
 }
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Real> for DiagPowF {
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Real> for (Diag, PowF) {
     type Res = NdDenseRepr<E>;
 
     type Err = TenalgErr;
@@ -388,9 +386,9 @@ unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Real> for DiagP
 // }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct DiagPowI;
+pub struct PowI;
 
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for DiagPowI {
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for (Diag, PowI) {
     type Res = NdDenseRepr<E>;
 
     type Err = TenalgErr;
@@ -418,7 +416,7 @@ unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for DiagPowI 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Half;
 
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, Half> for () {
+unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, Half> for Diag {
     type Res = NdDenseRepr<E>;
 
     type Err = TenalgErr;
@@ -462,7 +460,7 @@ mod tests {
 
     use crate::{
         NdDenseTensor, NdDenseTensorExt,
-        linalg::{DiagExp, HermiteEig},
+        linalg::{Diag, Hermite},
     };
     use tensory_core::tensor::TensorTask;
 
@@ -652,7 +650,7 @@ mod tests {
         let (vc, d, v) = t
             .view()
             .eig(ls![(&a, &a.prime()), (&b, &b.prime())], vcd, dv)?
-            .with(HermiteEig)?;
+            .with(Hermite)?;
 
         //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 
@@ -794,7 +792,7 @@ mod tests {
 
         let t_exp = (&t)
             .exp(ls![(&a, &a.prime()), (&b, &b.prime())])?
-            .with(DiagExp); // diagonal exp
+            .with(Diag); // diagonal exp
 
         {
             let t = Tensor::eye(lm![[a,a.prime()]=>a_n, [b,b.prime()]=>b_n])?; // [a,a',b,b']
@@ -804,7 +802,7 @@ mod tests {
 
             let n = (&t)
                 .exp(ls![(&a, &a.prime()), (&b, &b.prime())])?
-                .with(DiagExp)?; // scalar
+                .with(Diag)?; // scalar
         }
 
         Ok(())

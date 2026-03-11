@@ -19,7 +19,10 @@ pub mod cut_filter {
     pub use crate::tenalg::cut_filter::*;
 }
 
-use core::borrow::Borrow;
+use core::{
+    borrow::Borrow,
+    iter::{Empty, empty},
+};
 
 use rand::Rng;
 use tensory_core::{
@@ -35,7 +38,7 @@ use tensory_core::{
 };
 
 use alloc::vec::Vec;
-use ndarray::{Array2, ArrayD, ArrayViewD, ArrayViewMutD};
+use ndarray::{Array0, Array2, ArrayD, ArrayViewD, ArrayViewMutD};
 use ndarray_linalg::{
     Lapack, Scalar, random, random_hermite, random_hermite_using, random_unitary,
     random_unitary_using, random_using,
@@ -232,6 +235,12 @@ impl<E> NdDenseRepr<E> {
     pub fn map<E2, F: FnMut(&E) -> E2>(&self, f: F) -> NdDenseRepr<E2> {
         NdDenseRepr {
             data: self.data.map(f),
+        }
+    }
+
+    pub fn scalar(e: E) -> Self {
+        Self {
+            data: unsafe { Array0::from_shape_vec_unchecked([], alloc::vec![e]).into_dyn() },
         }
     }
 }
@@ -440,6 +449,10 @@ pub trait NdDenseTensorExt<E, M: AxisMapper>: Sized {
     fn map<E2, F: FnMut(&E) -> E2>(&self, f: F) -> Tensor<NdDenseRepr<E2>, M>
     where
         M: Clone;
+
+    fn scalar(e: E) -> Result<Self, <M as BuildableMapper<Empty<M::Id>>>::Err>
+    where
+        M: BuildableMapper<Empty<<M as AxisMapper>::Id>>;
 }
 impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
     fn from_array<K: ExactSizeIterator + Iterator<Item = M::Id>>(
@@ -591,6 +604,13 @@ impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
         M: Clone,
     {
         unsafe { Tensor::from_raw_unchecked(self.repr().map(&mut f), self.mapper().clone()) }
+    }
+
+    fn scalar(e: E) -> Result<Self, <M as BuildableMapper<Empty<M::Id>>>::Err>
+    where
+        M: BuildableMapper<Empty<<M as AxisMapper>::Id>>,
+    {
+        Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::scalar(e), M::build(empty())?) })
     }
 }
 
