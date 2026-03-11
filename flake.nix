@@ -7,7 +7,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     nix-jyjyjcr = {
-      url = "github:jyjyjcr/nix-jyjyjcr/dev/alt-shell";
+      url = "github:jyjyjcr/nix-jyjyjcr";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.flake-utils.follows = "flake-utils";
     };
@@ -18,10 +18,8 @@
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays = [
-            rust-overlay.overlays.default
-            nix-jyjyjcr.overlays.${system}.default
-          ];
+          overlays =
+            [ rust-overlay.overlays.default nix-jyjyjcr.overlays.default ];
         };
       in {
         devShells = pkgs.alt-shell.mkCommonShells { } {
