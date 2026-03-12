@@ -11,6 +11,10 @@ use rand::{SeedableRng, rngs::SmallRng};
 type Tensor<'a, E> = NdDenseTensor<E, VecMapper<&'a str>>;
 
 fn main() -> anyhow::Result<()> {
+    /*
+       Important! bound tensor/runtime is developing layer. this example is just a snapshot of the current concept.
+    */
+
     // in this example, we provide a usage of bound tensor.
 
     // again, we code a simplest example usage of tensory as follows:
@@ -38,37 +42,22 @@ fn main() -> anyhow::Result<()> {
     let t_mul_pi_div_pi = (t_mul_pi / PI)?;
 
     // as you can see, the the direct result of the `*` and `/` operation is already a bound tensor.
+    // this is because `NdRuntime` internally provide the required context for these operations, so that the operation can be performed without explicit context passing.
+    // so you don't need to call `.exec()` or `.with()` to perform the actual computation.
+    // this api is high layer api, which is designed for ease of use.
+    // in my opinion, this API is NOT recommended, because you cannot pass a custom context to the operation.
+    // (Though we plan to add map-like API to allow users to pass non-default context, but it is still in design phase.)
+
+    // the succeeding code is the same as before, we compute the difference and print the relative error.
 
     // here we perform subtraction to compute the difference between `t` and `t_mul_pi_div_pi`.
     let t_diff = (&t_mul_pi_div_pi - &t)?;
-
-    // you will notice that we use `&t` and `&t_mul_pi_div_pi` here, instead of `t` and `t_mul_pi_div_pi`.
-    // actually, this is a syntax suger for:
-    // let t_diff = (t_mul_pi_div_pi.view() - t.view())?.exec()?;
-    // `.view()` method creates a view tensor that just borrows the data of the original tensor.
-    // in this case, they create NdDenseViewTensor.
-    // tensory-ndarary provides subtraction operation only for view tensors, since the subtraction does not consume the tensor.
-    // of course, this is the implementation of tensory-ndarray. other third-party tensor crates may consume the owned tensor by subtraction.
-    // so the internal trait definition is declared to consume the input tensors.
-    // therefore we provide `.view()` as a workaround to create tensor references.
-    // and, to avoid to write `.view()` every time, we overload the `-` operator for references to tensors.
 
     // finally, we compute and print the norm of the difference, and normalize it by the norm of `t`.
     println!(
         "relative error (A ?= A * pi / pi): {}",
         (&t_diff).norm()? / (&t).norm()?
     );
-
-    // again, we use `&t_diff` and `&t` to borrow the tensors for norm computation.
-    // here we use `t` again, so if we had not used `t.clone()` before, `t` would have been moved and this line would cause a compile error. (see the comment with (X) mark above)
-    // also, you must use paranthesis as `(&t_diff)` and `(&t)` here, because the method call has higher precedence than the reference operator `&`.
-    // if we had not used `&` here, the compiler would think like this:
-    // `&t.norm().exec()` = `&( ( t.norm() ).exec() )`
-    // which means `t.norm()` consumes `t`, and then call the actual computation from default context `()`, but tensory-ndarray does not implement norm operation for owned tensors, only for view tensors.
-    // so the compiler would raise an error that `.exec()` is not satisfied trait bound.
-
-    // that's all for this simple example.
-    // now you should understand the basic schema of tensory operations.
 
     Ok(())
 }
