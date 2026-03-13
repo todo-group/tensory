@@ -8,7 +8,7 @@ use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
 use tensory_ndarray::{
     NdDenseTensor, NdDenseTensorExt,
-    linalg::{DiagExp, DiagPow, DiagPowI, Half, HermiteEig},
+    linalg::{Diag, Half, Hermite, PowF, PowI},
 };
 
 // type aliases for convenience. You can change them to other implementations.
@@ -16,6 +16,10 @@ type Leg = Prime<Id128>;
 type Tensor<E> = NdDenseTensor<E, VecMapper<Leg>>;
 
 fn main() -> anyhow::Result<()> {
+    // tensory-linalg provides various linear algebra operations.
+    // they share the same interface model as tensory-core.
+    // you should first read usage-core-*.rs then read this.
+
     // legs
     let a = Leg::new();
     let b = Leg::new();
@@ -50,13 +54,72 @@ fn main() -> anyhow::Result<()> {
 
         let t_exp = (&t)
             .pow(Half, ls![(&a, &a.prime()), (&b, &b.prime())])?
-            .exec()?; // [a,b,a',b']
+            .with(Diag)?; // [a,b,a',b']
+        // Diag is used when the operation implementation assumes the passed matrix is diagonal.
+        // such information will be treated by specific type, but now we just use marker struct.
+
+        // important info: some linalg operations require the matrix to be square.
+        // it is equivalent to that the linear transformation expressed by matrix is endomorphism.
+        // so generalizing to tensors, such operations require the legs to be paired and have the same size (and conceptually, express the same space).
+        // such information is passed as toupled leg list `ls![(**,**),(**,**),...]`.
 
         let mut sum = 0.0;
         for ai in 0..a_n {
             for bi in 0..b_n {
                 sum += (t_exp[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]]
                     - ((ai + bi) as f64).sqrt())
+                .abs();
+            }
+        }
+        println!("sqrt error: {}", sum);
+    }
+
+    // pow (float)
+    {
+        let mut t = Tensor::<f64>::zero(lm![a=>a_n,a.prime()=>a_n,b=>b_n,b.prime()=>b_n])?; // [a,a',b,b']
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                t[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]] = (ai + bi) as f64;
+            }
+        }
+
+        let power = 4;
+
+        let t_exp = (&t)
+            .pow(power, ls![(&a, &a.prime()), (&b, &b.prime())])?
+            .with((Diag, PowI))?; // [a,b,a',b']
+
+        let mut sum = 0.0;
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                sum += (t_exp[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]]
+                    - ((ai + bi) as f64).powi(power))
+                .abs();
+            }
+        }
+        println!("sqrt error: {}", sum);
+    }
+
+    // pow (float)
+    {
+        let mut t = Tensor::<f64>::zero(lm![a=>a_n,a.prime()=>a_n,b=>b_n,b.prime()=>b_n])?; // [a,a',b,b']
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                t[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]] = (ai + bi) as f64;
+            }
+        }
+
+        let power = 4.3;
+
+        let t_exp = (&t)
+            .pow(power, ls![(&a, &a.prime()), (&b, &b.prime())])?
+            .with((Diag, PowF))?; // [a,b,a',b']
+
+        let mut sum = 0.0;
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                sum += (t_exp[lm![&a=>ai,&a.prime()=>ai,&b=>bi,&b.prime()=>bi]]
+                    - ((ai + bi) as f64).powf(power))
                 .abs();
             }
         }
@@ -74,7 +137,7 @@ fn main() -> anyhow::Result<()> {
 
         let t_exp = (&t)
             .exp(ls![(&a, &a.prime()), (&b, &b.prime())])?
-            .with(DiagExp)?; // [a,b,a',b']
+            .with(Diag)?; // [a,b,a',b']
 
         let mut sum = 0.0;
         for ai in 0..a_n {
@@ -137,7 +200,8 @@ fn main() -> anyhow::Result<()> {
         )?; // [a,a',b,b']
         let (v, d, v_dagger) = (&t)
             .eig(ls![(&a, &a.prime()), (&b, &b.prime())], e, f)?
-            .with(HermiteEig)?; // v:[a,a',e], d:[e,f], vc:[f,b',b]
+            .with(Hermite)?; // v:[a,a',e], d:[e,f], vc:[f,b',b]
+        // as Diag, Hermite is used when the operation implementation assumes the passed matrix is hermitian.
         let t_reconstructed = (&(&v * &d)?.exec()? * &v_dagger)?.exec()?; // [a,a',b,b']
         println!(
             "relative error of eig reconstruct (A ?= V * D * V^†): {}",
