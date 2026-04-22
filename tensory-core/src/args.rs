@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 #[macro_export]
+#[deprecated]
 macro_rules! leg {
     ( $( $x:expr ),* ) => {
         $crate::args::LegSetArg::from_raw([$($x),*].into_iter())

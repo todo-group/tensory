@@ -1,6 +1,6 @@
 //! Provide pluggable way to implement arithmetic operations.
 //!
-//! Potentially, we could suupport all the arithmetic operations defined in `core` crate, listed below (`a` and `b` are tensors, `#` are non-tensors):
+//! Potentially, we could support all the arithmetic operations defined in `core` crate, listed below (`a` and `b` are tensors, `#` are non-tensors):
 //!
 //! - numeric unary: `- a`
 //! - numeric binary: `a + b`, `a + #` (?), `# + a` (?), `a - b`, `a - #` (?), `# - a` (?), `a * b` (!), `a * #`, `# * a`, `a / b` (?), `a / #`, `# / b` (?), `a % b` (?), `a % #`, `# % a` (?)
@@ -19,20 +19,23 @@
 //! - `a / #`
 //! - `a ^ #`
 //!
-//! these roughly cover the operations dinstincted in (non-comutative) group, ring, and field. (left subtraction and division are missed, but they are expected tp be same as `#-a` := `-(a-#)`, `#/a` := `1/# * a`)
+//! these roughly cover the operations dinstincted in (non-commutative) group, ring, and field. (left subtraction and division are missed, but they are expected to be same as `#-a` := `-(a-#)`, `#/a` := `1/# * a`)
 //!
 
 /// provide interface for tensor-tensor addition
 mod add;
 pub use add::*;
 
-/// provide interface for tensor-tensor subtraction
-mod sub;
-pub use sub::*;
+// /// provide interface for tensor-tensor subtraction
+// mod sub;
+// pub use sub::*;
 
-/// provide interface for tensor negation.
-mod neg;
-pub use neg::*;
+// /// provide interface for tensor negation
+// mod neg;
+// pub use neg::*;
+
+mod assign;
+pub use assign::*;
 
 /// provide interface for tensor-scalar multiplication
 mod scalar_mul;
@@ -47,8 +50,8 @@ pub use scalar_div::*;
 // pub use conj::*;
 
 /// provide interface for tensor-tensor multiplication (contraction)
-mod contr;
-pub use contr::*;
+mod mul;
+pub use mul::*;
 
 /// A marker trait for types that can be used as scalars in tensor arithmetic operations.
 pub trait TensorScalar {}

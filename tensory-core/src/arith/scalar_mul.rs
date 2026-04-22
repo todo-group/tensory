@@ -1,72 +1,141 @@
 use core::{convert::Infallible, ops::Mul};
 
 use crate::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
+    bound_tensor::{BoundTensor, Runtime, RuntimeErr},
     mapper::AxisMapper,
-    repr::TensorRepr,
-    tensor::{Tensor, TensorTask, ToTensor},
+    repr::{ReprContext, TensorRepr, TensorTupleRepr},
+    task::{Context, IsTask},
+    tensor::{Tensor, ToTensorTuple},
 };
 
-/// Raw context of left scalar multiplication operation.
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
-pub unsafe trait LeftScalarMulCtx<A: TensorRepr, E> {
-    /// The type of the result tensor representation.
-    type Res: TensorRepr;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
+// /// Raw context of left scalar multiplication operation.
+// ///
+// /// # Safety
+// ///
+// /// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
+// pub unsafe trait LeftScalarMulCtx<A: TensorRepr, E> {
+//     /// The type of the result tensor representation.
+//     type Res: TensorRepr;
+//     /// The type of the error returned by the context. (considered as internal error)
+//     type Err;
 
-    /// Performs left scalar multiplication operation on the tensor `a`.
-    fn left_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
-}
+//     /// Performs left scalar multiplication operation on the tensor `a`.
+//     fn left_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
+// }
 
-/// Intermediate task struct for left scalar multiplication operation.
-
+/// Intermediate task struct for left scalar multiplication (scalar * tensor) operation.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorLeftScalarMul<A: TensorRepr, M: AxisMapper, E> {
+pub struct LeftScalarMulRepr<A: TensorRepr, E> {
     a: A,
     scalar: E,
-    res_mapper: M,
 }
+unsafe impl<A: TensorRepr, E> TensorTupleRepr<1> for LeftScalarMulRepr<A, E> {
+    fn naxeses(&self) -> [usize; 1] {
+        [self.a.naxes()]
+    }
+}
+impl<A: TensorRepr, E> IsTask for LeftScalarMulRepr<A, E> {}
 
-impl<A: TensorRepr, M: AxisMapper, E, C: LeftScalarMulCtx<A, E>> TensorTask<C>
-    for TensorLeftScalarMul<A, M, E>
-{
-    type Output = Result<Tensor<C::Res, M>, C::Err>;
+// impl<A: TensorRepr, M: AxisMapper, E, C: LeftScalarMulCtx<A, E>> Task<C>
+//     for TensorLeftScalarMul<A, M, E>
+// {
+//     type Output = Result<Tensor<C::Res, M>, C::Err>;
 
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
-        let scalar = self.scalar;
+//     fn with(self, ctx: C) -> Self::Output {
+//         let a = self.a;
+//         let scalar = self.scalar;
 
-        let aconj = ctx.left_scalar_mul(a, scalar)?;
+//         let aconj = ctx.left_scalar_mul(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
+//         Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
+//     }
+// }
+
+// /// Raw context of right scalar multiplication operation.
+// ///
+// /// # Safety
+// ///
+// /// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
+// pub unsafe trait RightScalarMulCtx<A: TensorRepr, E> {
+//     /// The type of the result tensor representation.
+//     type Res: TensorRepr;
+//     /// The type of the error returned by the context. (considered as internal error)
+//     type Err;
+
+//     /// Performs right scalar multiplication operation on the tensor `a`.
+//     fn right_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
+// }
+
+/// Intermediate task struct for right scalar multiplication (tensor * scalar) operation.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct RightScalarMulRepr<A: TensorRepr, E> {
+    a: A,
+    scalar: E,
+}
+unsafe impl<A: TensorRepr, E> TensorTupleRepr<1> for RightScalarMulRepr<A, E> {
+    fn naxeses(&self) -> [usize; 1] {
+        [self.a.naxes()]
+    }
+}
+impl<A: TensorRepr, E> IsTask for RightScalarMulRepr<A, E> {}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct CommutativeScalarMulRepr<A: TensorRepr, E> {
+    a: A,
+    scalar: E,
+}
+unsafe impl<A: TensorRepr, E> TensorTupleRepr<1> for CommutativeScalarMulRepr<A, E> {
+    fn naxeses(&self) -> [usize; 1] {
+        [self.a.naxes()]
+    }
+}
+impl<A: TensorRepr, E> CommutativeScalarMulRepr<A, E> {
+    pub fn from_raw(a: A, scalar: E) -> Self {
+        Self { a, scalar }
+    }
+    pub fn into_raw(self) -> (A, E) {
+        (self.a, self.scalar)
     }
 }
 
-/// Raw context of right scalar multiplication operation.
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
-pub unsafe trait RightScalarMulCtx<A: TensorRepr, E> {
-    /// The type of the result tensor representation.
-    type Res: TensorRepr;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
+impl<A: TensorRepr, E> IsTask for CommutativeScalarMulRepr<A, E> {}
 
-    /// Performs right scalar multiplication operation on the tensor `a`.
-    fn right_scalar_mul(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
+impl<A: TensorRepr, E, Mk, C: Context<Mk, CommutativeScalarMulRepr<A, E>>>
+    Context<Mk, LeftScalarMulRepr<A, E>> for C
+{
+    type Output = <C as Context<Mk, CommutativeScalarMulRepr<A, E>>>::Output;
+
+    fn execute(self, task: LeftScalarMulRepr<A, E>) -> Self::Output {
+        self.execute(CommutativeScalarMulRepr {
+            a: task.a,
+            scalar: task.scalar,
+        })
+    }
+}
+unsafe impl<A: TensorRepr, E, Mk, C: ReprContext<Mk, 1, CommutativeScalarMulRepr<A, E>>>
+    ReprContext<Mk, 1, LeftScalarMulRepr<A, E>> for C
+{
+    type Repr = <C as ReprContext<Mk, 1, CommutativeScalarMulRepr<A, E>>>::Repr;
+    type CType = <C as ReprContext<Mk, 1, CommutativeScalarMulRepr<A, E>>>::CType;
 }
 
-/// Intermediate task struct for right scalar multiplication operation.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorRightScalarMul<A: TensorRepr, M: AxisMapper, E> {
-    a: A,
-    scalar: E,
-    res_mapper: M,
+impl<A: TensorRepr, E, Mk, C: Context<Mk, CommutativeScalarMulRepr<A, E>>>
+    Context<Mk, RightScalarMulRepr<A, E>> for C
+{
+    type Output = <C as Context<Mk, CommutativeScalarMulRepr<A, E>>>::Output;
+
+    fn execute(self, task: RightScalarMulRepr<A, E>) -> Self::Output {
+        self.execute(CommutativeScalarMulRepr {
+            a: task.a,
+            scalar: task.scalar,
+        })
+    }
+}
+unsafe impl<A: TensorRepr, E, Mk, C: ReprContext<Mk, 1, CommutativeScalarMulRepr<A, E>>>
+    ReprContext<Mk, 1, RightScalarMulRepr<A, E>> for C
+{
+    type Repr = <C as ReprContext<Mk, 1, CommutativeScalarMulRepr<A, E>>>::Repr;
+    type CType = <C as ReprContext<Mk, 1, CommutativeScalarMulRepr<A, E>>>::CType;
 }
 
 // impl<A: TensorRepr, B: AxisMapper, E> TensorRightScalarMul<A, B, E> {
@@ -76,49 +145,49 @@ pub struct TensorRightScalarMul<A: TensorRepr, M: AxisMapper, E> {
 //     // }
 // }
 
-impl<A: TensorRepr, M: AxisMapper, E, C: RightScalarMulCtx<A, E>> TensorTask<C>
-    for TensorRightScalarMul<A, M, E>
-{
-    type Output = Result<Tensor<C::Res, M>, C::Err>;
+// impl<A: TensorRepr, M: AxisMapper, E, C: RightScalarMulCtx<A, E>> Task<C>
+//     for TensorRightScalarMul<A, M, E>
+// {
+//     type Output = Result<Tensor<C::Res, M>, C::Err>;
 
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
-        let scalar = self.scalar;
+//     fn with(self, ctx: C) -> Self::Output {
+//         let a = self.a;
+//         let scalar = self.scalar;
 
-        let aconj = ctx.right_scalar_mul(a, scalar)?;
+//         let aconj = ctx.right_scalar_mul(a, scalar)?;
 
-        Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
-    }
-}
+//         Ok(unsafe { Tensor::from_raw_unchecked(aconj, self.res_mapper) })
+//     }
+// }
 
-/// Raw context of scalar multiplication operation. (no left/right)
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
-pub unsafe trait CommutativeScalarMulCtx<A: TensorRepr, E>:
-    LeftScalarMulCtx<A, E>
-    + RightScalarMulCtx<
-        A,
-        E,
-        Res = <Self as LeftScalarMulCtx<A, E>>::Res,
-        Err = <Self as LeftScalarMulCtx<A, E>>::Err,
-    > + Sized
-{
-    // /// The type of the result tensor representation.
-    // type Res: TensorRepr;
-    // /// The type of the error returned by the context. (considered as internal error)
-    // type Err;
+// /// Raw context of scalar multiplication operation. (no left/right)
+// ///
+// /// # Safety
+// ///
+// /// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
+// pub unsafe trait CommutativeScalarMulCtx<A: TensorRepr, E>:
+//     LeftScalarMulCtx<A, E>
+//     + RightScalarMulCtx<
+//         A,
+//         E,
+//         Res = <Self as LeftScalarMulCtx<A, E>>::Res,
+//         Err = <Self as LeftScalarMulCtx<A, E>>::Err,
+//     > + Sized
+// {
+//     // /// The type of the result tensor representation.
+//     // type Res: TensorRepr;
+//     // /// The type of the error returned by the context. (considered as internal error)
+//     // type Err;
 
-    /// Performs left scalar multiplication operation on the tensor `a`.
-    fn scalar_mul(
-        self,
-        a: A,
-        scalar: E,
-    ) -> Result<<Self as LeftScalarMulCtx<A, E>>::Res, <Self as LeftScalarMulCtx<A, E>>::Err> {
-        self.left_scalar_mul(a, scalar)
-    }
-}
+//     /// Performs left scalar multiplication operation on the tensor `a`.
+//     fn scalar_mul(
+//         self,
+//         a: A,
+//         scalar: E,
+//     ) -> Result<<Self as LeftScalarMulCtx<A, E>>::Res, <Self as LeftScalarMulCtx<A, E>>::Err> {
+//         self.left_scalar_mul(a, scalar)
+//     }
+// }
 
 // pub unsafe trait ScalarMulCtxDerive<A: TensorRepr, E> {
 //     type Res: TensorRepr;
@@ -152,30 +221,22 @@ pub trait TensorScalarMulExt<E> {
     /// The type of the axis mapper.
     type M: AxisMapper;
     /// Creates a left scalar multiplication task.
-    fn left_mul(self, lhs: E) -> TensorLeftScalarMul<Self::A, Self::M, E>;
+    fn left_mul(self, lhs: E) -> Tensor<LeftScalarMulRepr<Self::A, E>, Self::M>;
     /// Creates a right scalar multiplication task.
-    fn right_mul(self, rhs: E) -> TensorRightScalarMul<Self::A, Self::M, E>;
+    fn right_mul(self, rhs: E) -> Tensor<RightScalarMulRepr<Self::A, E>, Self::M>;
 }
 
-impl<T: ToTensor, E> TensorScalarMulExt<E> for T {
+impl<T: ToTensorTuple<1>, E> TensorScalarMulExt<E> for T {
     type A = T::Repr;
     type M = T::Mapper;
 
-    fn left_mul(self, lhs: E) -> TensorLeftScalarMul<Self::A, Self::M, E> {
-        let (a, mapper) = self.to_tensor().into_raw();
-        TensorLeftScalarMul {
-            a,
-            scalar: lhs,
-            res_mapper: mapper,
-        }
+    fn left_mul(self, lhs: E) -> Tensor<LeftScalarMulRepr<Self::A, E>, Self::M> {
+        let (a, mapper) = self.to_tensor_tuple().into_raw();
+        unsafe { Tensor::from_raw_unchecked(LeftScalarMulRepr { a, scalar: lhs }, mapper) }
     }
-    fn right_mul(self, rhs: E) -> TensorRightScalarMul<Self::A, Self::M, E> {
-        let (a, mapper) = self.to_tensor().into_raw();
-        TensorRightScalarMul {
-            a,
-            scalar: rhs,
-            res_mapper: mapper,
-        }
+    fn right_mul(self, rhs: E) -> Tensor<RightScalarMulRepr<Self::A, E>, Self::M> {
+        let (a, mapper) = self.to_tensor_tuple().into_raw();
+        unsafe { Tensor::from_raw_unchecked(RightScalarMulRepr { a, scalar: rhs }, mapper) }
     }
 }
 
@@ -185,29 +246,29 @@ macro_rules! impl_scalar_mul {
     ($a:ty $(,$life:lifetime)* ) => {
         impl<$($life,)* A: TensorRepr, M: AxisMapper,E> Mul<(E,)> for $a
         where
-            $a: ToTensor,
+            $a: ToTensorTuple<1>,
         {
-            type Output = TensorRightScalarMul<<Self as ToTensor>::Repr, <Self as ToTensor>::Mapper, E>;
+            type Output = Tensor<RightScalarMulRepr<<Self as ToTensorTuple<1>>::Repr, E>, <Self as ToTensorTuple<1>>::Mapper>;
             fn mul(self, rhs: (E,)) -> Self::Output {
-                self.to_tensor().right_mul(rhs.0)
+                self.to_tensor_tuple().right_mul(rhs.0)
             }
         }
         impl<$($life,)* A: TensorRepr, M: AxisMapper,E> Mul<$a> for (E,)
         where
-            $a: ToTensor,
+            $a: ToTensorTuple<1>,
         {
-            type Output = TensorLeftScalarMul<<$a as ToTensor>::Repr, <$a as ToTensor>::Mapper, E>;
+            type Output = Tensor<LeftScalarMulRepr<<$a as ToTensorTuple<1>>::Repr, E>, <$a as ToTensorTuple<1>>::Mapper>;
             fn mul(self, rhs: $a) -> Self::Output {
-                rhs.to_tensor().left_mul(self.0)
+                rhs.to_tensor_tuple().left_mul(self.0)
             }
         }
         impl<$($life,)* A: TensorRepr, M: AxisMapper,E:TensorScalar> Mul<E> for $a
         where
-            $a: ToTensor,
+            $a: ToTensorTuple<1>,
         {
-            type Output = TensorRightScalarMul<<Self as ToTensor>::Repr, <Self as ToTensor>::Mapper, E>;
+            type Output = Tensor<RightScalarMulRepr<<Self as ToTensorTuple<1>>::Repr, E>, <Self as ToTensorTuple<1>>::Mapper>;
             fn mul(self, rhs: E) -> Self::Output {
-                self.to_tensor().right_mul(rhs)
+                self.to_tensor_tuple().right_mul(rhs)
             }
         }
 
@@ -218,161 +279,160 @@ impl_scalar_mul!(Tensor<A, M>);
 impl_scalar_mul!(&'a Tensor<A, M>,'a);
 impl_scalar_mul!(&'a mut Tensor<A, M>,'a);
 
-/// Runtime trait for left scalar multiplication operation.
-pub trait LeftScalarMulRuntime<A: TensorRepr, E>: Runtime {
-    /// The context type.
-    type Ctx: LeftScalarMulCtx<A, E>;
-    /// Returns the context.
-    fn left_scalar_mul_ctx(&self) -> Self::Ctx;
-}
+// /// Runtime trait for left scalar multiplication operation.
+// pub trait LeftScalarMulRuntime<A: TensorRepr, E>: Runtime {
+//     /// The context type.
+//     type Ctx: LeftScalarMulCtx<A, E>;
+//     /// Returns the context.
+//     fn left_scalar_mul_ctx(&self) -> Self::Ctx;
+// }
 
-/// Runtime trait for right scalar multiplication operation.
-pub trait RightScalarMulRuntime<A: TensorRepr, E>: Runtime {
-    /// The context type.
-    type Ctx: RightScalarMulCtx<A, E>;
-    /// Returns the context.
-    fn right_scalar_mul_ctx(&self) -> Self::Ctx;
-}
+// /// Runtime trait for right scalar multiplication operation.
+// pub trait RightScalarMulRuntime<A: TensorRepr, E>: Runtime {
+//     /// The context type.
+//     type Ctx: RightScalarMulCtx<A, E>;
+//     /// Returns the context.
+//     fn right_scalar_mul_ctx(&self) -> Self::Ctx;
+// }
 
-/// Runtime trait for commutative scalar multiplication operation. (no left/right)
-pub trait CommutativeScalarMulRuntime<A: TensorRepr, E>: Runtime {
-    /// The context type.
-    type Ctx: CommutativeScalarMulCtx<A, E>;
-    /// Returns the context.
-    fn scalar_mul_ctx(&self) -> Self::Ctx;
-}
-impl<T: CommutativeScalarMulRuntime<A, E>, A: TensorRepr, E> LeftScalarMulRuntime<A, E> for T {
-    type Ctx = T::Ctx;
-    fn left_scalar_mul_ctx(&self) -> Self::Ctx {
-        self.scalar_mul_ctx()
-    }
-}
-impl<T: CommutativeScalarMulRuntime<A, E>, A: TensorRepr, E> RightScalarMulRuntime<A, E> for T {
-    type Ctx = T::Ctx;
-    fn right_scalar_mul_ctx(&self) -> Self::Ctx {
-        self.scalar_mul_ctx()
-    }
-}
+// /// Runtime trait for commutative scalar multiplication operation. (no left/right)
+// pub trait CommutativeScalarMulRuntime<A: TensorRepr, E>: Runtime {
+//     /// The context type.
+//     type Ctx: CommutativeScalarMulCtx<A, E>;
+//     /// Returns the context.
+//     fn scalar_mul_ctx(&self) -> Self::Ctx;
+// }
+// impl<T: CommutativeScalarMulRuntime<A, E>, A: TensorRepr, E> LeftScalarMulRuntime<A, E> for T {
+//     type Ctx = T::Ctx;
+//     fn left_scalar_mul_ctx(&self) -> Self::Ctx {
+//         self.scalar_mul_ctx()
+//     }
+// }
+// impl<T: CommutativeScalarMulRuntime<A, E>, A: TensorRepr, E> RightScalarMulRuntime<A, E> for T {
+//     type Ctx = T::Ctx;
+//     fn right_scalar_mul_ctx(&self) -> Self::Ctx {
+//         self.scalar_mul_ctx()
+//     }
+// }
 
-macro_rules! impl_scalar_mul_runtime {
-    ($a:ty $(,$life:lifetime)*) => {
-        impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E> Mul<(E,)> for $a
-        where
-            $a: ToBoundTensor<Mapper = M, Runtime = RT>,
-            RT: RightScalarMulRuntime<<$a as ToBoundTensor>::Repr, E>,
-        {
-            type Output = Result<
-                BoundTensor<
-                    <<RT as RightScalarMulRuntime<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Ctx as RightScalarMulCtx<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Res,
-                    M,
-                    RT,
-                >,
-                RuntimeErr<
-                    Infallible,
-                    <<RT as RightScalarMulRuntime<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Ctx as RightScalarMulCtx<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Err,
-                >,
-            >;
-            fn mul(self, rhs: (E,)) -> Self::Output {
-                let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
+// macro_rules! impl_scalar_mul_runtime {
+//     ($a:ty $(,$life:lifetime)*) => {
+//         impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E> Mul<(E,)> for $a
+//         where
+//             $a: ToBoundTensor<Mapper = M, Runtime = RT>,
+//             RT: RightScalarMulRuntime<<$a as ToBoundTensor>::Repr, E>,
+//         {
+//             type Output = Result<
+//                 BoundTensor<
+//                     <<RT as RightScalarMulRuntime<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Ctx as RightScalarMulCtx<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Res,
+//                     M,
+//                     RT,
+//                 >,
+//                 RuntimeErr<
+//                     Infallible,
+//                     <<RT as RightScalarMulRuntime<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Ctx as RightScalarMulCtx<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Err,
+//                 >,
+//             >;
+//             fn mul(self, rhs: (E,)) -> Self::Output {
+//                 let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
 
-                let res = (lhs * rhs)
-                    .with(lhs_rt.right_scalar_mul_ctx())
-                    .map_err(RuntimeErr::Ctx)?;
-                Ok(BoundTensor::from_raw(res, lhs_rt))
-            }
-        }
+//                 let res = (lhs * rhs)
+//                     .with(lhs_rt.right_scalar_mul_ctx())
+//                     .map_err(RuntimeErr::Ctx)?;
+//                 Ok(BoundTensor::from_raw(res, lhs_rt))
+//             }
+//         }
 
+//         impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E> Mul<$a> for (E,)
+//         where
+//             $a: ToBoundTensor<Mapper = M, Runtime = RT>,
+//             RT: LeftScalarMulRuntime<<$a as ToBoundTensor>::Repr, E>,
+//         {
+//             type Output = Result<
+//                 BoundTensor<
+//                     <<RT as LeftScalarMulRuntime<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Ctx as LeftScalarMulCtx<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Res,
+//                     M,
+//                     RT,
+//                 >,
+//                 RuntimeErr<
+//                     Infallible,
+//                     <<RT as LeftScalarMulRuntime<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Ctx as LeftScalarMulCtx<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Err,
+//                 >,
+//             >;
+//             fn mul(self, rhs: $a) -> Self::Output {
+//                 let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
 
-        impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E> Mul<$a> for (E,)
-        where
-            $a: ToBoundTensor<Mapper = M, Runtime = RT>,
-            RT: LeftScalarMulRuntime<<$a as ToBoundTensor>::Repr, E>,
-        {
-            type Output = Result<
-                BoundTensor<
-                    <<RT as LeftScalarMulRuntime<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Ctx as LeftScalarMulCtx<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Res,
-                    M,
-                    RT,
-                >,
-                RuntimeErr<
-                    Infallible,
-                    <<RT as LeftScalarMulRuntime<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Ctx as LeftScalarMulCtx<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Err,
-                >,
-            >;
-            fn mul(self, rhs: $a) -> Self::Output {
-                let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
+//                 let res = (self * rhs)
+//                     .with(rhs_rt.left_scalar_mul_ctx())
+//                     .map_err(RuntimeErr::Ctx)?;
+//                 Ok(BoundTensor::from_raw(res, rhs_rt))
+//             }
+//         }
 
-                let res = (self * rhs)
-                    .with(rhs_rt.left_scalar_mul_ctx())
-                    .map_err(RuntimeErr::Ctx)?;
-                Ok(BoundTensor::from_raw(res, rhs_rt))
-            }
-        }
+//         impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E:TensorScalar> Mul<E> for $a
+//         where
+//             $a: ToBoundTensor<Mapper = M, Runtime = RT>,
+//             RT: RightScalarMulRuntime<<$a as ToBoundTensor>::Repr, E>,
+//         {
+//             type Output = Result<
+//                 BoundTensor<
+//                     <<RT as RightScalarMulRuntime<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Ctx as RightScalarMulCtx<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Res,
+//                     M,
+//                     RT,
+//                 >,
+//                 RuntimeErr<
+//                     Infallible,
+//                     <<RT as RightScalarMulRuntime<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Ctx as RightScalarMulCtx<
+//                         <$a as ToBoundTensor>::Repr,
+//                         E,
+//                     >>::Err,
+//                 >,
+//             >;
+//             fn mul(self, rhs: E) -> Self::Output {
+//                 let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
 
-        impl<$($life,)* A: TensorRepr, M: AxisMapper, RT:Runtime, E:TensorScalar> Mul<E> for $a
-        where
-            $a: ToBoundTensor<Mapper = M, Runtime = RT>,
-            RT: RightScalarMulRuntime<<$a as ToBoundTensor>::Repr, E>,
-        {
-            type Output = Result<
-                BoundTensor<
-                    <<RT as RightScalarMulRuntime<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Ctx as RightScalarMulCtx<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Res,
-                    M,
-                    RT,
-                >,
-                RuntimeErr<
-                    Infallible,
-                    <<RT as RightScalarMulRuntime<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Ctx as RightScalarMulCtx<
-                        <$a as ToBoundTensor>::Repr,
-                        E,
-                    >>::Err,
-                >,
-            >;
-            fn mul(self, rhs: E) -> Self::Output {
-                let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
+//                 let res = (lhs * rhs)
+//                     .with(lhs_rt.right_scalar_mul_ctx())
+//                     .map_err(RuntimeErr::Ctx)?;
+//                 Ok(BoundTensor::from_raw(res, lhs_rt))
+//             }
+//         }
+//     };
+// }
 
-                let res = (lhs * rhs)
-                    .with(lhs_rt.right_scalar_mul_ctx())
-                    .map_err(RuntimeErr::Ctx)?;
-                Ok(BoundTensor::from_raw(res, lhs_rt))
-            }
-        }
-    };
-}
-
-impl_scalar_mul_runtime!(BoundTensor<A, M, RT>);
-impl_scalar_mul_runtime!(&'a BoundTensor<A, M, RT>,'a);
-impl_scalar_mul_runtime!(&'a mut BoundTensor<A, M, RT>,'a);
+// impl_scalar_mul_runtime!(BoundTensor<A, M, RT>);
+// impl_scalar_mul_runtime!(&'a BoundTensor<A, M, RT>,'a);
+// impl_scalar_mul_runtime!(&'a mut BoundTensor<A, M, RT>,'a);

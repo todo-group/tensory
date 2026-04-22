@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 use thiserror::Error;
 
 use crate::args::LegMapArg;
+use crate::container::{ContainerImpl, ContainerType};
 
 /// Minimal interface for tensor axis mappers.
 ///
@@ -43,18 +44,20 @@ pub unsafe trait AxisMapper: Sized {
 }
 
 pub trait BuildableMapper<P>: AxisMapper {
-    type Err;
-    fn build(precursor: P) -> Result<Self, Self::Err>;
+    type CType: ContainerImpl<Self>;
+    fn build(precursor: P) -> <Self::CType as ContainerImpl<Self>>::Container;
 }
 
 pub trait SynBuildableMapper<P>: AxisMapper {
-    type Err;
-    fn syn_build(precursor: P) -> Result<Self, Self::Err>;
+    type CType: ContainerImpl<Self>;
+    fn syn_build(precursor: P) -> <Self::CType as ContainerImpl<Self>>::Container;
 }
 
 pub unsafe trait OverlayMapper<const N: usize>: AxisMapper {
-    type Err;
-    fn overlay(mappers: [Self; N]) -> Result<(Self, OverlayAxisMapping<N>), Self::Err>;
+    type CType: ContainerImpl<(Self, OverlayAxisMapping<N>)>;
+    fn overlay(
+        mappers: [Self; N],
+    ) -> <Self::CType as ContainerImpl<(Self, OverlayAxisMapping<N>)>>::Container;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -93,8 +96,10 @@ impl<const N: usize> OverlayAxisMapping<N> {
 }
 
 pub unsafe trait ConnectMapper<const N: usize>: AxisMapper {
-    type Err;
-    fn connect(mappers: [Self; N]) -> Result<(Self, ConnectAxisOrigin<N>), Self::Err>;
+    type CType: ContainerImpl<(Self, ConnectAxisOrigin<N>)>;
+    fn connect(
+        mappers: [Self; N],
+    ) -> <Self::CType as ContainerImpl<(Self, ConnectAxisOrigin<N>)>>::Container;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]

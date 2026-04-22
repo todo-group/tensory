@@ -1,129 +1,159 @@
 use core::ops::Sub;
 
 use crate::{
-    bound_tensor::{BoundTensor, RuntimeErr},
+    bound_tensor::{BoundTensorTuple, RuntimeErr},
     mapper::{AxisMapper, OverlayAxisMapping, OverlayMapper},
+    port::PortError,
     repr::TensorRepr,
-    tensor::{Tensor, TensorTask},
+    task::{Context, TaskDelegate, TaskHolder},
+    tensor::{Tensor, ToTensorTuple},
 };
 
-/// Raw context of subtraction operation.
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor has the proper "axis structure" inherited from the input tensors described with `axis_mapping`.
-pub unsafe trait SubCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
-    /// The type of the result tensor representation.
-    type Res: TensorRepr;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
+/// Intermediate task struct for subtraction operation.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct SubRepr<L: TensorRepr, R: TensorRepr> {
+    lhs: L,
+    rhs: R,
+    axis_mapping: OverlayAxisMapping<2>,
+}
 
-    /// Performs subtraction operation on the tensors `lhs` and `rhs` with the given axis overlay mapping.
-    ///
-    /// # Safety
-    ///
-    /// the user MUST ensure that `axis_mapping` has the same number of axes same as the input tensors.
-    unsafe fn sub_unchecked(
+impl<L: TensorRepr, R: TensorRepr> SubRepr<L, R> {
+    pub unsafe fn from_raw_unchecked(lhs: L, rhs: R, axis_mapping: OverlayAxisMapping<2>) -> Self {
+        Self {
+            lhs,
+            rhs,
+            axis_mapping,
+        }
+    }
+    pub fn from_raw(
         self,
-        lhs: Lhs,
-        rhs: Rhs,
+        lhs: L,
+        rhs: R,
         axis_mapping: OverlayAxisMapping<2>,
-    ) -> Result<Self::Res, Self::Err>;
-}
-/// Safe version if `SubCtxImpl`.
-///
-/// The blanket implementation checks input and panic if the condition is not satisfied.
-pub trait SubCtx<Lhs: TensorRepr, Rhs: TensorRepr>: SubCtxImpl<Lhs, Rhs> {
-    /// Safe version of `sub_unchecked`.
-    fn sub(
-        self,
-        lhs: Lhs,
-        rhs: Rhs,
-        axis_mapping: OverlayAxisMapping<2>,
-    ) -> Result<Self::Res, Self::Err>;
-}
-impl<C: SubCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> SubCtx<Lhs, Rhs> for C {
-    fn sub(
-        self,
-        lhs: Lhs,
-        rhs: Rhs,
-        axis_mapping: OverlayAxisMapping<2>,
-    ) -> Result<Self::Res, Self::Err> {
+    ) -> Result<Self, PortError> {
         let n_l = lhs.naxes();
         let n_r = rhs.naxes();
         let n = axis_mapping.naxes();
         if n_l != n || n_r != n {
-            panic!("axis_mapping must match the number of axes with lhs and rhs");
+            Err(PortError)
+        } else {
+            Ok(Self {
+                lhs,
+                rhs,
+                axis_mapping,
+            })
         }
-        unsafe { self.sub_unchecked(lhs, rhs, axis_mapping) }
+    }
+
+    pub fn into_raw(self) -> (L, R, OverlayAxisMapping<2>) {
+        (self.lhs, self.rhs, self.axis_mapping)
     }
 }
 
-/// Intermediate task struct for subtraction operation.
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorSub<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
-    lhs: L,
-    rhs: R,
-    res_mapper: M,
-    axis_mapping: OverlayAxisMapping<2>,
+unsafe impl<L: TensorRepr, R: TensorRepr> TensorRepr for SubRepr<L, R> {
+    fn naxes(&self) -> usize {
+        self.axis_mapping.naxes()
+    }
 }
-impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorSub<L, R, M> {
-    /// Construct a `TensorSub` by provided closure.
-    pub fn by_manager(
-        lhs: Tensor<L, M>,
+
+impl<L: TensorRepr, M: AxisMapper> Tensor<L, M> {
+    // /// Construct a `TensorAdd` by provided closure.
+    pub fn sub_by_manager<R: TensorRepr>(
+        self: Tensor<L, M>,
         rhs: Tensor<R, M>,
         manager: impl FnOnce(M, M) -> (M, OverlayAxisMapping<2>),
-    ) -> Self {
-        let (lhs, lhs_mapper) = lhs.into_raw();
+    ) -> Tensor<SubRepr<L, R>, M> {
+        let (lhs, lhs_mapper) = self.into_raw();
         let (rhs, rhs_mapper) = rhs.into_raw();
 
         let (res_mapper, axis_mapping) = manager(lhs_mapper, rhs_mapper);
 
-        Self {
-            lhs,
-            rhs,
-            res_mapper,
-            axis_mapping,
+        unsafe {
+            Tensor::from_raw_unchecked(
+                SubRepr {
+                    lhs,
+                    rhs,
+                    axis_mapping,
+                },
+                res_mapper,
+            )
         }
     }
-    /// Try to construct a `TensorSub` by provided closure.
-    pub fn try_by_manager<E>(
-        lhs: Tensor<L, M>,
+    // /// Try to construct a `TensorAdd` by provided closure.
+    pub fn try_sub_by_manager<R: TensorRepr, E>(
+        self: Tensor<L, M>,
         rhs: Tensor<R, M>,
         manager: impl FnOnce(M, M) -> Result<(M, OverlayAxisMapping<2>), E>,
-    ) -> Result<Self, E> {
-        let (lhs, lhs_mapper) = lhs.into_raw();
+    ) -> Result<Tensor<SubRepr<L, R>, M>, E> {
+        let (lhs, lhs_mapper) = self.into_raw();
         let (rhs, rhs_mapper) = rhs.into_raw();
 
         let (res_mapper, axis_origin) = manager(lhs_mapper, rhs_mapper)?;
 
-        Ok(Self {
-            lhs,
-            rhs,
-            res_mapper,
-            axis_mapping: axis_origin,
-        })
-    }
-}
-
-impl<L: TensorRepr, R: TensorRepr, M: AxisMapper, C: SubCtxImpl<L, R>> TensorTask<C>
-    for TensorSub<L, R, M>
-{
-    type Output = Result<Tensor<C::Res, M>, C::Err>;
-
-    fn with(self, ctx: C) -> Result<Tensor<C::Res, M>, C::Err> {
         Ok(unsafe {
             Tensor::from_raw_unchecked(
-                ctx.sub_unchecked(self.lhs, self.rhs, self.axis_mapping)?,
-                self.res_mapper,
+                SubRepr {
+                    lhs,
+                    rhs,
+                    axis_mapping: axis_origin,
+                },
+                res_mapper,
             )
         })
     }
 }
 
-// 9 combinations of Lhs/Rhs being owned/view/view_mut
+pub unsafe trait TensorSubContext<Mk, L: TensorRepr, R: TensorRepr, O>:
+    Context<Mk, SubRepr<L, R>, O>
+{
+    // type Ctx: Context<Mk, AddRepr<L, R>, O>;
+    // fn add_ctx(&self) -> Self::Ctx;
+}
 
-use crate::tensor::ToTensor;
+impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TaskHolder<SubRepr<L, R>>
+    for Tensor<SubRepr<L, R>, M>
+{
+}
+
+impl<
+    L: TensorRepr,
+    R: TensorRepr,
+    M: AxisMapper,
+    Mk,
+    Ctx: TensorSubContext<Mk, L, R, O>,
+    O: TensorRepr,
+> TaskDelegate<SubRepr<L, R>, O, Mk, Ctx> for Tensor<SubRepr<L, R>, M>
+{
+    type Output = Tensor<O, M>;
+
+    fn with(self, ctx: Ctx) -> Self::Output {
+        let (repr, mapper) = self.into_raw();
+        let output = ctx.execute(repr);
+
+        unsafe { Tensor::from_raw_unchecked(output, mapper) }
+    }
+}
+impl<
+    L: TensorRepr,
+    R: TensorRepr,
+    M: AxisMapper,
+    Mk,
+    Ctx: TensorSubContext<Mk, L, R, Result<Ores, Oerr>>,
+    Ores: TensorRepr,
+    Oerr,
+> TaskDelegate<SubRepr<L, R>, Result<Ores, Oerr>, Mk, Ctx> for Tensor<SubRepr<L, R>, M>
+{
+    type Output = Result<Tensor<Ores, M>, Oerr>;
+
+    fn with(self, ctx: Ctx) -> Self::Output {
+        let (repr, mapper) = self.into_raw();
+        let output = ctx.execute(repr)?;
+
+        Ok(unsafe { Tensor::from_raw_unchecked(output, mapper) })
+    }
+}
+
+// 9 combinations of Lhs/Rhs being owned/view/view_mut
 
 macro_rules! impl_sub {
     ($l:ty,$r:ty $(,$life:lifetime)* ) => {
@@ -133,13 +163,13 @@ macro_rules! impl_sub {
             $r: ToTensor<Mapper = M>,
         {
             type Output = Result<
-                TensorSub<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr, M>,
+                Tensor<SubRepr<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr>, M>,
                 <M as OverlayMapper<2>>::Err,
             >;
             fn sub(self, rhs: $r) -> Self::Output {
                 let lhs = ToTensor::to_tensor(self);
                 let rhs = ToTensor::to_tensor(rhs);
-                TensorSub::try_by_manager(lhs, rhs, |l, r| OverlayMapper::<2>::overlay([l, r]))
+                lhs.try_sub_by_manager(rhs, |l, r| OverlayMapper::<2>::overlay([l, r]))
             }
         }
     };
@@ -155,71 +185,71 @@ impl_sub!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
 impl_sub!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 impl_sub!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 
-/// Runtime trait for subtraction operation.
-pub trait SubRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
-    /// The context type.
-    type Ctx: SubCtxImpl<Lhs, Rhs>;
-    /// Returns the context.
-    fn sub_ctx(&self) -> Self::Ctx;
-}
+// /// Runtime trait for subtraction operation.
+// pub trait SubRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
+//     /// The context type.
+//     type Ctx: SubCtxImpl<Lhs, Rhs>;
+//     /// Returns the context.
+//     fn sub_ctx(&self) -> Self::Ctx;
+// }
 
-// // 9 combinations of Lhs/Rhs being owned/view/view_mut
-use crate::bound_tensor::{Runtime, ToBoundTensor};
+// // // 9 combinations of Lhs/Rhs being owned/view/view_mut
+// use crate::bound_tensor::{Runtime, ToBoundTensor};
 
-macro_rules! impl_sub_runtime {
-    ($l:ty,$r:ty $(,$life:lifetime)*) => {
-        impl<$($life,)* L: TensorRepr, R: TensorRepr, M: OverlayMapper<2>, RT:Runtime> Sub<$r> for $l
-        where
-            $l: ToBoundTensor<Mapper = M, Runtime = RT>,
-            $r: ToBoundTensor<Mapper = M, Runtime = RT>,
-            RT: SubRuntime<<$l as ToBoundTensor>::Repr, <$r as ToBoundTensor>::Repr>,
-        {
-            type Output = Result<
-                BoundTensor<
-                    <<RT as SubRuntime<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Ctx as SubCtxImpl<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Res,
-                    M,
-                    RT,
-                >,
-                RuntimeErr<
-                    <M as OverlayMapper<2>>::Err,
-                    <<RT as SubRuntime<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Ctx as SubCtxImpl<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Err,
-                >,
-            >;
-            fn sub(self, rhs: $r) -> Self::Output {
-                let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
-                let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
+// macro_rules! impl_sub_runtime {
+//     ($l:ty,$r:ty $(,$life:lifetime)*) => {
+//         impl<$($life,)* L: TensorRepr, R: TensorRepr, M: OverlayMapper<2>, RT:Runtime> Sub<$r> for $l
+//         where
+//             $l: ToBoundTensor<Mapper = M, Runtime = RT>,
+//             $r: ToBoundTensor<Mapper = M, Runtime = RT>,
+//             RT: SubRuntime<<$l as ToBoundTensor>::Repr, <$r as ToBoundTensor>::Repr>,
+//         {
+//             type Output = Result<
+//                 BoundTensor<
+//                     <<RT as SubRuntime<
+//                         <$l as ToBoundTensor>::Repr,
+//                         <$r as ToBoundTensor>::Repr,
+//                     >>::Ctx as SubCtxImpl<
+//                         <$l as ToBoundTensor>::Repr,
+//                         <$r as ToBoundTensor>::Repr,
+//                     >>::Res,
+//                     M,
+//                     RT,
+//                 >,
+//                 RuntimeErr<
+//                     <M as OverlayMapper<2>>::Err,
+//                     <<RT as SubRuntime<
+//                         <$l as ToBoundTensor>::Repr,
+//                         <$r as ToBoundTensor>::Repr,
+//                     >>::Ctx as SubCtxImpl<
+//                         <$l as ToBoundTensor>::Repr,
+//                         <$r as ToBoundTensor>::Repr,
+//                     >>::Err,
+//                 >,
+//             >;
+//             fn sub(self, rhs: $r) -> Self::Output {
+//                 let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
+//                 let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
 
-                if lhs_rt != rhs_rt {
-                    return Err(RuntimeErr::Runtime);
-                }
-                let res = (lhs - rhs)
-                    .map_err(RuntimeErr::Axis)?
-                    .with(lhs_rt.sub_ctx())
-                    .map_err(RuntimeErr::Ctx)?;
-                Ok(BoundTensor::from_raw(res, lhs_rt))
-            }
-        }
-    };
-}
+//                 if lhs_rt != rhs_rt {
+//                     return Err(RuntimeErr::Runtime);
+//                 }
+//                 let res = (lhs - rhs)
+//                     .map_err(RuntimeErr::Axis)?
+//                     .with(lhs_rt.sub_ctx())
+//                     .map_err(RuntimeErr::Ctx)?;
+//                 Ok(BoundTensor::from_raw(res, lhs_rt))
+//             }
+//         }
+//     };
+// }
 
-impl_sub_runtime!(BoundTensor<L, M, RT>, BoundTensor<R, M, RT>);
-impl_sub_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
-impl_sub_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
-impl_sub_runtime!(BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'r);
-impl_sub_runtime!(&'l BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
-impl_sub_runtime!(&'l mut BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
-impl_sub_runtime!(BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'r);
-impl_sub_runtime!(&'l BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
-impl_sub_runtime!(&'l mut BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
+// impl_sub_runtime!(BoundTensor<L, M, RT>, BoundTensor<R, M, RT>);
+// impl_sub_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
+// impl_sub_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
+// impl_sub_runtime!(BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'r);
+// impl_sub_runtime!(&'l BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
+// impl_sub_runtime!(&'l mut BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
+// impl_sub_runtime!(BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'r);
+// impl_sub_runtime!(&'l BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
+// impl_sub_runtime!(&'l mut BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
