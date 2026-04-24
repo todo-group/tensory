@@ -84,10 +84,7 @@ impl<L: TensorRepr, R: TensorRepr> MulRepr<L, R> {
         rhs: R,
         axis_origin: ConnectAxisOrigin<2>,
     ) -> Result<Self, PortError> {
-        let n_l = lhs.naxes();
-        let n_r = rhs.naxes();
-        let n = axis_origin.len();
-        if n_l != n || n_r != n {
+        if axis_origin.in_lens() != [lhs.naxes(), rhs.naxes()] {
             Err(PortError)
         } else {
             Ok(Self {
