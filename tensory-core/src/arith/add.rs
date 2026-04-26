@@ -10,13 +10,14 @@ use crate::{
     tensor::{Tensor, TensorContext, ToTensorTuple},
 };
 
-/// Intermediate task struct for addition operation.
+/// Intermediate task representation for addition operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct AddRepr<L: TensorRepr, R: TensorRepr> {
     lhs: L,
     rhs: R,
     axis_mapping: OverlayAxisMapping<2>,
 }
+
 impl<L: TensorRepr, R: TensorRepr> AddRepr<L, R> {
     pub unsafe fn from_raw_unchecked(lhs: L, rhs: R, axis_mapping: OverlayAxisMapping<2>) -> Self {
         Self {
@@ -44,7 +45,6 @@ impl<L: TensorRepr, R: TensorRepr> AddRepr<L, R> {
             })
         }
     }
-
     pub fn into_raw(self) -> (L, R, OverlayAxisMapping<2>) {
         (self.lhs, self.rhs, self.axis_mapping)
     }
@@ -58,7 +58,9 @@ unsafe impl<L: TensorRepr, R: TensorRepr> TensorTupleRepr<1> for AddRepr<L, R> {
 impl<L: TensorRepr, R: TensorRepr> IsTask for AddRepr<L, R> {}
 
 impl<L: TensorRepr, M: AxisMapper> Tensor<L, M> {
-    // /// Construct a `TensorAdd` by provided closure.
+    /// Construct a addition task tensor by provided closure with unchecked manager construction.
+    /// # Safety
+    /// The caller MUST ensure that the manager returns a consistent axis mapper and mapping.
     pub unsafe fn add_by_manager_unchecked<
         R: TensorRepr,
         C: ContainerMapImpl<(M, OverlayAxisMapping<2>), Tensor<AddRepr<L, R>, M>>,
@@ -83,7 +85,7 @@ impl<L: TensorRepr, M: AxisMapper> Tensor<L, M> {
             },
         )
     }
-
+    /// Construct a subtraction task tensor by provided closure with checked manager construction.
     pub fn add_by_manager_checked<
         R: TensorRepr,
         C: ContainerMapImpl<
@@ -112,32 +114,9 @@ impl<L: TensorRepr, M: AxisMapper> Tensor<L, M> {
             },
         )
     }
-    // // /// Try to construct a `TensorAdd` by provided closure.
-    // pub fn try_add_by_manager<R: TensorRepr, E>(
-    //     self: Tensor<L, M>,
-    //     rhs: Tensor<R, M>,
-    //     manager: impl FnOnce(M, M) -> Result<(M, OverlayAxisMapping<2>), E>,
-    // ) -> Result<Tensor<AddRepr<L, R>, M>, E> {
-    //     let (lhs, [lhs_mapper]) = self.into_raw();
-    //     let (rhs, [rhs_mapper]) = rhs.into_raw();
-
-    //     let (res_mapper, axis_origin) = manager(lhs_mapper, rhs_mapper)?;
-
-    //     Ok(unsafe {
-    //         Tensor::from_raw_unchecked(
-    //             AddRepr {
-    //                 lhs,
-    //                 rhs,
-    //                 axis_mapping: axis_origin,
-    //             },
-    //             [res_mapper],
-    //         )
-    //     })
-    // }
 }
 
 // 9 combinations of Lhs/Rhs being owned/view/view_mut
-
 macro_rules! impl_add {
     ($l:ty,$r:ty $(,$life:lifetime)* ) => {
         impl<$($life,)* L: TensorRepr, R: TensorRepr, M: OverlayMapper<2>> Add<$r> for $l
@@ -155,7 +134,6 @@ macro_rules! impl_add {
         }
     };
 }
-
 impl_add!(Tensor<L, M>, Tensor<R, M>);
 impl_add!(&'l Tensor<L, M>, Tensor<R, M>,'l);
 impl_add!(&'l mut Tensor<L, M>, Tensor<R, M>,'l);
@@ -166,17 +144,7 @@ impl_add!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
 impl_add!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 impl_add!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
 
-// /// Runtime trait for addition operation.
-// pub trait AddRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
-//     /// The context type.
-//     type Mk;
-//     type Ctx: TensorContext<Self::Mk, 1, AddRepr<Lhs, Rhs>>;
-//     /// Returns the context.
-//     fn add_ctx(&self) -> Self::Ctx;
-// }
-
-// // 9 combinations of Lhs/Rhs being owned/view/view_mut
-
+// 9 combinations of Lhs/Rhs being owned/view/view_mut
 macro_rules! impl_add_runtime {
     ($l:ty,$r:ty $(,$life:lifetime)*) => {
         impl<$($life,)* L: TensorRepr, R: TensorRepr, M: OverlayMapper<2>, RT:Runtime> Add<$r> for $l
@@ -228,7 +196,6 @@ macro_rules! impl_add_runtime {
         }
     };
 }
-
 impl_add_runtime!(BoundTensor<L, M, RT>, BoundTensor<R, M, RT>);
 impl_add_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
 impl_add_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);

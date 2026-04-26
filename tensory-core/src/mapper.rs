@@ -156,8 +156,11 @@ impl<const N: usize> ConnectAxisOrigin<N> {
 
 pub unsafe trait GroupMapper<const N: usize, Q>: AxisMapper {
     type Grouped: GroupedMapper<N, Mapper = Self>;
-    type Err;
-    fn split(self, queue: Q) -> Result<(Self::Grouped, GroupedAxes<N>), Self::Err>;
+    type CType: ContainerImpl<(Self::Grouped, GroupedAxes<N>)>;
+    fn split(
+        self,
+        queue: Q,
+    ) -> <Self::CType as ContainerImpl<(Self::Grouped, GroupedAxes<N>)>>::Container;
 }
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GroupedAxes<const N: usize> {
@@ -248,11 +251,11 @@ pub unsafe trait GroupedMapper<const N: usize> {
 pub unsafe trait DecompGroupedMapper<const N: usize, const M: usize>:
     GroupedMapper<N>
 {
-    type Err;
+    type CType: ContainerImpl<[Self::Mapper; M]>;
     fn decomp(
         self,
         conf: DecompConf<N, M, <Self::Mapper as AxisMapper>::Id>,
-    ) -> Result<[Self::Mapper; M], Self::Err>;
+    ) -> <Self::CType as ContainerImpl<[Self::Mapper; M]>>::Container;
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -346,13 +349,13 @@ pub trait SortMapper<Content>: AxisMapper {
         <Self as AxisMapper>::Id: 'a;
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
-pub enum SplittyErr<SE, DE> {
-    #[error("Split error: {0}")]
-    Split(SE),
-    #[error("Use error: {0}")]
-    Use(DE),
-}
+// #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
+// pub enum SplittyErr<SE, DE> {
+//     #[error("Split error: {0}")]
+//     Split(SE),
+//     #[error("Use error: {0}")]
+//     Use(DE),
+// }
 
 pub trait ReplaceMapper<Q>: AxisMapper {
     type Err;

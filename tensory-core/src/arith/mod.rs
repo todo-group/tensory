@@ -17,7 +17,7 @@
 //! - `a * #`
 //! - `# * a` (may be removed)
 //! - `a / #`
-//! - `a ^ #`
+//! - `a ^ #` (not implemented yet)
 //!
 //! these roughly cover the operations dinstincted in (non-commutative) group, ring, and field. (left subtraction and division are missed, but they are expected to be same as `#-a` := `-(a-#)`, `#/a` := `1/# * a`)
 //!
@@ -26,13 +26,13 @@
 mod add;
 pub use add::*;
 
-// /// provide interface for tensor-tensor subtraction
-// mod sub;
-// pub use sub::*;
+/// provide interface for tensor-tensor subtraction
+mod sub;
+pub use sub::*;
 
-// /// provide interface for tensor negation
-// mod neg;
-// pub use neg::*;
+/// provide interface for tensor negation
+mod neg;
+pub use neg::*;
 
 mod assign;
 pub use assign::*;
