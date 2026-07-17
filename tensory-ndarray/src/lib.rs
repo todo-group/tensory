@@ -38,7 +38,7 @@ use tensory_core::{
 };
 
 use alloc::vec::Vec;
-use ndarray::{Array0, Array2, ArrayD, ArrayViewD, ArrayViewMutD};
+use ndarray::{Array0, Array2, ArrayD, ArrayViewD, ArrayViewMutD, CowArray, IxDyn};
 use ndarray_linalg::{
     Lapack, Scalar, random, random_hermite, random_hermite_using, random_unitary,
     random_unitary_using, random_using,
@@ -75,6 +75,20 @@ impl<'a, E> NdDenseViewMutRepr<'a, E> {
         Self { data }
     }
     pub fn into_raw(self) -> ArrayViewMutD<'a, E> {
+        self.data
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct NdDenseCowRepr<'a, E> {
+    data: CowArray<'a, E, IxDyn>,
+}
+
+impl<'a, E> NdDenseCowRepr<'a, E> {
+    pub fn from_raw(data: CowArray<'a, E, IxDyn>) -> Self {
+        Self { data }
+    }
+    pub fn into_raw(self) -> CowArray<'a, E, IxDyn> {
         self.data
     }
 }
@@ -245,6 +259,21 @@ impl<E> NdDenseRepr<E> {
     }
 }
 
+impl<'a, E> From<NdDenseRepr<E>> for NdDenseCowRepr<'a, E> {
+    fn from(repr: NdDenseRepr<E>) -> Self {
+        Self {
+            data: CowArray::from(repr.data),
+        }
+    }
+}
+impl<'a, E> From<NdDenseViewRepr<'a, E>> for NdDenseCowRepr<'a, E> {
+    fn from(repr: NdDenseViewRepr<'a, E>) -> Self {
+        Self {
+            data: CowArray::from(repr.data),
+        }
+    }
+}
+
 unsafe impl<'a, E: 'a> AsViewRepr<'a> for NdDenseRepr<E> {
     type View = NdDenseViewRepr<'a, E>;
     fn view(&'a self) -> Self::View {
@@ -261,6 +290,25 @@ unsafe impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseRepr<E> {
         }
     }
 }
+unsafe impl<'a, 'x, E> AsViewRepr<'a> for NdDenseCowRepr<'x, E>
+where
+    'a: 'x,
+{
+    type View = NdDenseViewRepr<'x, E>;
+    fn view(&'a self) -> Self::View {
+        NdDenseViewRepr {
+            data: self.data.view(),
+        }
+    }
+}
+// unsafe impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseCowRepr<'a, E> {
+//     type ViewMut = NdDenseViewMutRepr<'a, E>;
+//     fn view_mut(&'a mut self) -> Self::ViewMut {
+//         NdDenseViewMutRepr {
+//             data: self.data.view_mut(),
+//         }
+//     }
+// }
 
 unsafe impl<E> TensorRepr for NdDenseRepr<E> {
     fn naxes(&self) -> usize {
@@ -277,6 +325,11 @@ unsafe impl<E> TensorRepr for NdDenseViewMutRepr<'_, E> {
         self.data.shape().len()
     }
 }
+unsafe impl<E> TensorRepr for NdDenseCowRepr<'_, E> {
+    fn naxes(&self) -> usize {
+        self.data.shape().len()
+    }
+}
 impl<'a, E> AxisInfoReprImpl<'a> for NdDenseRepr<E> {
     type AxisInfo = usize;
 
@@ -286,6 +339,20 @@ impl<'a, E> AxisInfoReprImpl<'a> for NdDenseRepr<E> {
 }
 
 impl<'a, E> AxisInfoReprImpl<'a> for NdDenseViewRepr<'a, E> {
+    type AxisInfo = usize;
+
+    unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
+        self.data.shape()[i]
+    }
+}
+impl<'a, E> AxisInfoReprImpl<'a> for NdDenseViewMutRepr<'a, E> {
+    type AxisInfo = usize;
+
+    unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
+        self.data.shape()[i]
+    }
+}
+impl<'a, E> AxisInfoReprImpl<'a> for NdDenseCowRepr<'a, E> {
     type AxisInfo = usize;
 
     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
@@ -346,6 +413,7 @@ impl<E> ElemGetMutReprImpl for NdDenseRepr<E> {
 pub type NdDenseTensor<E, B> = Tensor<NdDenseRepr<E>, B>;
 pub type NdDenseViewTensor<'a, E, B> = Tensor<NdDenseViewRepr<'a, E>, B>;
 pub type NdDenseViewMutTensor<'a, E, B> = Tensor<NdDenseViewMutRepr<'a, E>, B>;
+pub type NdDenseCowTensor<'a, E, B> = Tensor<NdDenseCowRepr<'a, E>, B>;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 pub enum NdDenseFromArrayErr<E> {
@@ -611,6 +679,22 @@ impl<E, M: AxisMapper> NdDenseTensorExt<E, M> for NdDenseTensor<E, M> {
         M: BuildableMapper<Empty<<M as AxisMapper>::Id>>,
     {
         Ok(unsafe { Tensor::from_raw_unchecked(NdDenseRepr::scalar(e), M::build(empty())?) })
+    }
+}
+
+pub trait NdDenseCowTensorExt<'a, E, M: AxisMapper>: Sized {
+    fn from_owned(t: NdDenseTensor<E, M>) -> Self;
+    fn from_view(t: NdDenseViewTensor<'a, E, M>) -> Self;
+}
+
+impl<'a, E, B: AxisMapper> NdDenseCowTensorExt<'a, E, B> for NdDenseCowTensor<'a, E, B> {
+    fn from_owned(t: NdDenseTensor<E, B>) -> Self {
+        let (repr, mapper) = t.into_raw();
+        unsafe { Tensor::from_raw_unchecked(NdDenseCowRepr::from(repr), mapper) }
+    }
+    fn from_view(t: NdDenseViewTensor<'a, E, B>) -> Self {
+        let (repr, mapper) = t.into_raw();
+        unsafe { Tensor::from_raw_unchecked(NdDenseCowRepr::from(repr), mapper) }
     }
 }
 
