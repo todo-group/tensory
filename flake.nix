@@ -13,23 +13,46 @@
     };
   };
 
-  outputs = { nixpkgs, flake-utils, rust-overlay, nix-jyjyjcr, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      nixpkgs,
+      flake-utils,
+      rust-overlay,
+      nix-jyjyjcr,
+      ...
+    }:
+    (flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs {
           inherit system;
-          overlays =
-            [ rust-overlay.overlays.default nix-jyjyjcr.overlays.default ];
+          config.allowUnfreePredicate =
+            pkg:
+            builtins.elem (pkgs.lib.getName pkg) [
+              "corefonts"
+            ];
         };
-      in {
-        devShells = pkgs.alt-shell.mkCommonShells { } {
+        tensory-logo = pkgs.callPackage ./assets/logo.nix { };
+
+        pkgs-dev = import nixpkgs {
+          inherit system;
+          overlays = [
+            rust-overlay.overlays.default
+            nix-jyjyjcr.overlays.default
+          ];
+        };
+      in
+      {
+        packages.tensory-logo = tensory-logo;
+
+        devShells = pkgs-dev.alt-shell.mkCommonShells { } {
           packages = [
-            (pkgs.rust-bin.stable.latest.default.override {
+            (pkgs-dev.rust-bin.stable.latest.default.override {
               extensions = [ "rust-src" ];
             })
-            pkgs.cargo-edit
+            pkgs-dev.cargo-edit
             # for openblas
-            pkgs.openblas
+            pkgs-dev.openblas
             # for openblas 64-bit
             # (pkgs.openblas.override { blas64 = true; })
 
@@ -46,10 +69,17 @@
             # pkgs.R
             # pkgs.libintl
 
-            pkgs.pkg-config
-            pkgs.uv
-            pkgs.python313
+            pkgs-dev.pkg-config
+            pkgs-dev.uv
+            pkgs-dev.python313
+            pkgs-dev.sccache
           ];
         };
-      });
+      }
+    ))
+    // {
+      overlays.default = final: prev: {
+        tensory-logo = prev.callPackage ./assets/logo.nix { };
+      };
+    };
 }
