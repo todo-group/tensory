@@ -2,7 +2,7 @@
 
 use crate::{
     mapper::{AxisMapper, ReplaceMapper},
-    repr::{AsViewMutRepr, AsViewRepr, TensorRepr},
+    repr::{AsViewMutRepr, AsViewRepr, IntoOwnedRepr, TensorRepr},
 };
 
 /// A standard tensor struct.
@@ -95,8 +95,6 @@ impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
         unsafe { Tensor::from_raw_unchecked(self.repr().view(), self.mapper().clone()) }
     }
     /// Create a mutable view of the tensor.
-    ///
-    /// In method chain, you would be able to replace `a.view_mut()` with `(&mut a)` thanks to boilerplate implementations.
     pub fn view_mut<'a>(&'a mut self) -> Tensor<R::ViewMut, M>
     where
         M: Clone,
@@ -104,6 +102,17 @@ impl<R: TensorRepr, M: AxisMapper> Tensor<R, M> {
     {
         let mapper = self.mapper().clone();
         unsafe { Tensor::from_raw_unchecked(self.repr_mut().view_mut(), mapper) }
+    }
+
+    /// Create an owned version of the tensor.
+    ///
+    /// In method chain, you would be able to replace `a.into_owned()` with `(a)` thanks to boilerplate implementations.
+    pub fn into_owned(self) -> Tensor<R::Owned, M>
+    where
+        R: IntoOwnedRepr,
+    {
+        let (repr, mapper) = self.into_raw();
+        unsafe { Tensor::from_raw_unchecked(repr.into_owned_repr(), mapper) }
     }
 }
 

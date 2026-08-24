@@ -29,7 +29,7 @@ use tensory_core::{
     args::{LegMapArg, LegSetArg},
     bound_tensor::Runtime,
     mapper::{AxisMapper, BuildableMapper, SynBuildableMapper},
-    repr::{AsViewMutRepr, AsViewRepr},
+    repr::{AsViewMutRepr, AsViewRepr, IntoOwnedRepr},
     tensor::Tensor,
     utils::{
         axis_info::AxisInfoReprImpl,
@@ -266,7 +266,10 @@ impl<'a, E> From<NdDenseRepr<E>> for NdDenseCowRepr<'a, E> {
         }
     }
 }
-impl<'a, E> From<NdDenseViewRepr<'a, E>> for NdDenseCowRepr<'a, E> {
+impl<'a, 'b, E> From<NdDenseViewRepr<'a, E>> for NdDenseCowRepr<'b, E>
+where
+    'a: 'b,
+{
     fn from(repr: NdDenseViewRepr<'a, E>) -> Self {
         Self {
             data: CowArray::from(repr.data),
@@ -282,6 +285,23 @@ unsafe impl<'a, E: 'a> AsViewRepr<'a> for NdDenseRepr<E> {
         }
     }
 }
+unsafe impl<'a, 'b, E> AsViewRepr<'b> for NdDenseViewRepr<'a, E> {
+    type View = NdDenseViewRepr<'a, E>;
+    fn view(&'b self) -> Self::View {
+        NdDenseViewRepr {
+            data: self.data.clone(),
+        }
+    }
+}
+unsafe impl<'a, 'x, E: 'a> AsViewRepr<'a> for NdDenseCowRepr<'x, E> {
+    type View = NdDenseViewRepr<'a, E>;
+    fn view(&'a self) -> Self::View {
+        NdDenseViewRepr {
+            data: self.data.view(),
+        }
+    }
+}
+
 unsafe impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseRepr<E> {
     type ViewMut = NdDenseViewMutRepr<'a, E>;
     fn view_mut(&'a mut self) -> Self::ViewMut {
@@ -290,18 +310,39 @@ unsafe impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseRepr<E> {
         }
     }
 }
-unsafe impl<'a, 'x, E> AsViewRepr<'a> for NdDenseCowRepr<'x, E>
-where
-    'a: 'x,
-{
-    type View = NdDenseViewRepr<'x, E>;
-    fn view(&'a self) -> Self::View {
-        NdDenseViewRepr {
-            data: self.data.view(),
+
+unsafe impl<E> IntoOwnedRepr for NdDenseRepr<E> {
+    type Owned = NdDenseRepr<E>;
+    fn into_owned_repr(self) -> Self::Owned {
+        self
+    }
+}
+unsafe impl<'a, E: Clone> IntoOwnedRepr for NdDenseViewRepr<'a, E> {
+    type Owned = NdDenseRepr<E>;
+    fn into_owned_repr(self) -> Self::Owned {
+        NdDenseRepr {
+            data: self.data.to_owned(),
         }
     }
 }
-// unsafe impl<'a, E: 'a> AsViewMutRepr<'a> for NdDenseCowRepr<'a, E> {
+unsafe impl<'a, E: Clone> IntoOwnedRepr for NdDenseViewMutRepr<'a, E> {
+    type Owned = NdDenseRepr<E>;
+    fn into_owned_repr(self) -> Self::Owned {
+        NdDenseRepr {
+            data: self.data.to_owned(),
+        }
+    }
+}
+unsafe impl<'a, E: Clone> IntoOwnedRepr for NdDenseCowRepr<'a, E> {
+    type Owned = NdDenseRepr<E>;
+    fn into_owned_repr(self) -> Self::Owned {
+        NdDenseRepr {
+            data: self.data.to_owned(),
+        }
+    }
+}
+
+// unsafe impl<'a, 'x, E: 'a> AsViewMutRepr<'a> for NdDenseCowRepr<'x, E> {
 //     type ViewMut = NdDenseViewMutRepr<'a, E>;
 //     fn view_mut(&'a mut self) -> Self::ViewMut {
 //         NdDenseViewMutRepr {
@@ -338,21 +379,21 @@ impl<'a, E> AxisInfoReprImpl<'a> for NdDenseRepr<E> {
     }
 }
 
-impl<'a, E> AxisInfoReprImpl<'a> for NdDenseViewRepr<'a, E> {
+impl<'a, E> AxisInfoReprImpl<'_> for NdDenseViewRepr<'a, E> {
     type AxisInfo = usize;
 
     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
         self.data.shape()[i]
     }
 }
-impl<'a, E> AxisInfoReprImpl<'a> for NdDenseViewMutRepr<'a, E> {
+impl<'a, E> AxisInfoReprImpl<'_> for NdDenseViewMutRepr<'a, E> {
     type AxisInfo = usize;
 
     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {
         self.data.shape()[i]
     }
 }
-impl<'a, E> AxisInfoReprImpl<'a> for NdDenseCowRepr<'a, E> {
+impl<'a, E> AxisInfoReprImpl<'_> for NdDenseCowRepr<'a, E> {
     type AxisInfo = usize;
 
     unsafe fn axis_info_unchecked(&self, i: usize) -> Self::AxisInfo {

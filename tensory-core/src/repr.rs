@@ -46,3 +46,15 @@ pub unsafe trait AsViewMutRepr<'a>: TensorRepr {
     /// Returns a mutable view representation of itself. The view has the same semantic structure of axes as the original representation.
     fn view_mut(&'a mut self) -> Self::ViewMut;
 }
+
+/// Interface to generate an owned representation of itself.
+///
+/// # Safety
+///
+/// The implementor MUST ensure that the owned representation has the same semantic structure of axes as the original representation.
+pub unsafe trait IntoOwnedRepr: TensorRepr {
+    /// Owned representation type.
+    type Owned: TensorRepr;
+    /// Returns an owned representation of itself. The owned representation has the same semantic structure of axes as the original representation.
+    fn into_owned_repr(self) -> Self::Owned;
+}
