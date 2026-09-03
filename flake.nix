@@ -6,11 +6,6 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    nix-jyjyjcr = {
-      url = "github:jyjyjcr/nix-jyjyjcr";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "flake-utils";
-    };
   };
 
   outputs =
@@ -18,9 +13,13 @@
       nixpkgs,
       flake-utils,
       rust-overlay,
-      nix-jyjyjcr,
       ...
     }:
+    let
+      overlay = final: prev: {
+        tensory-logo = prev.callPackage ./assets/logo.nix { };
+      };
+    in
     (flake-utils.lib.eachDefaultSystem (
       system:
       let
@@ -31,21 +30,15 @@
             builtins.elem (pkgs.lib.getName pkg) [
               "corefonts"
             ];
+          overlays = [ overlay ];
         };
-        tensory-logo = pkgs.callPackage ./assets/logo.nix { };
-
         pkgs-dev = import nixpkgs {
           inherit system;
           overlays = [
             rust-overlay.overlays.default
-            nix-jyjyjcr.overlays.default
           ];
         };
-      in
-      {
-        packages.tensory-logo = tensory-logo;
-
-        devShells = pkgs-dev.alt-shell.mkCommonShells { } {
+        devShellArgs = {
           packages = [
             (pkgs-dev.rust-bin.stable.latest.default.override {
               extensions = [ "rust-src" ];
@@ -75,11 +68,14 @@
             pkgs-dev.sccache
           ];
         };
+      in
+      {
+        packages.tensory-logo = pkgs.tensory-logo;
+        devShellArgs = devShellArgs;
+        devShells = pkgs-dev.mkShell devShellArgs;
       }
     ))
     // {
-      overlays.default = final: prev: {
-        tensory-logo = prev.callPackage ./assets/logo.nix { };
-      };
+      overlays.default = overlay;
     };
 }
