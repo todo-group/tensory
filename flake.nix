@@ -38,7 +38,10 @@
             rust-overlay.overlays.default
           ];
         };
-        devShellArgs = {
+      in
+      {
+        packages.tensory-logo = pkgs.tensory-logo;
+        devShells.default = pkgs-dev.mkShell {
           packages = [
             (pkgs-dev.rust-bin.stable.latest.default.override {
               extensions = [ "rust-src" ];
@@ -68,11 +71,6 @@
             pkgs-dev.sccache
           ];
         };
-      in
-      {
-        packages.tensory-logo = pkgs.tensory-logo;
-        devShellArgs = devShellArgs;
-        devShells = pkgs-dev.mkShell devShellArgs;
       }
     ))
     // {
