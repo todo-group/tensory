@@ -49,7 +49,7 @@ fn main() -> anyhow::Result<()> {
 
 ## Getting Help
 
-Read [Examples](https://github.com/todo-group/tensory/example) for sample codes, or see API [Docs](https://docs.rs/tensory) to know details.
+Read [Examples](https://github.com/todo-group/tensory/tree/main/examples) for sample codes, or see API [Docs](https://docs.rs/tensory) to know details.
 
 ## Roadmap
 
