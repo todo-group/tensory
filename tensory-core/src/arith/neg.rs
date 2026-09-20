@@ -1,21 +1,24 @@
 use crate::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
+    concept::{
+        container::{Raw, Resulting},
+        task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
+    },
     mapper::AxisMapper,
-    repr::TensorRepr,
-    tensor::{Tensor, TensorTask, ToTensor},
+    repr::TensorTupleRepr,
+    tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
-use core::convert::Infallible;
-use core::ops::Neg;
+use core::{convert::Infallible, ops::Neg};
 
+/*
 /// Raw context of negation operation.
 ///
 /// # Safety
 ///
 /// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
-pub unsafe trait NegCtx<A: TensorRepr> {
+pub unsafe trait NegCtx<A: TensorTupleRepr<1>> {
     /// The type of the result tensor representation.
-    type Res: TensorRepr;
+    type Res: TensorTupleRepr<1>;
     /// The type of the error returned by the context. (considered as internal error)
     type Err;
 
@@ -23,39 +26,53 @@ pub unsafe trait NegCtx<A: TensorRepr> {
     fn negate(self, a: A) -> Result<Self::Res, Self::Err>;
 }
 
-/// Intermediate task struct for negation operation.
+*/
+
+/// Lazy representation for a negation operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorNeg<A: TensorRepr, M: AxisMapper> {
+pub struct NegRepr<A: TensorTupleRepr<1>> {
     a: A,
-    res_mapper: M,
 }
 
-// pub fn new(a: Tensor<LA, A>) -> Self {
-//     let (raw, legs) = a.into_raw();
-//     Self { a: raw, legs }
-// }
+impl<A: TensorTupleRepr<1>> NegRepr<A> {
+    /// Creates a representation for an input tensor.
+    pub fn from_raw(a: A) -> Self {
+        Self { a }
+    }
 
-impl<A: TensorRepr, M: AxisMapper, C: NegCtx<A>> TensorTask<C> for TensorNeg<A, M> {
-    type Output = Result<Tensor<C::Res, M>, C::Err>;
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
+    /// Creates a representation without checking its input.
+    ///
+    /// # Safety
+    ///
+    /// `a` must be a valid tensor representation.
+    pub unsafe fn from_raw_unchecked(a: A) -> Self {
+        Self { a }
+    }
 
-        let aneg = ctx.negate(a)?;
-
-        Ok(unsafe { Tensor::from_raw_unchecked(aneg, self.res_mapper) })
+    /// Decomposes the representation into its input.
+    pub fn into_raw(self) -> A {
+        self.a
     }
 }
 
+unsafe impl<A: TensorTupleRepr<1>> TensorTupleRepr<1> for NegRepr<A> {
+    fn naxes_array(&self) -> [usize; 1] {
+        self.a.naxes_array()
+    }
+}
+
+impl<A: TensorTupleRepr<1>> IsTask for NegRepr<A> {}
+
 macro_rules! impl_neg {
     ($a:ty $(,$life:lifetime)* ) => {
-        impl<$($life,)* A: TensorRepr, M: AxisMapper> Neg for $a
+        impl<$($life,)* A: TensorTupleRepr<1>, M: AxisMapper> Neg for $a
         where
-            $a: ToTensor,
+            $a: ToTensor<Mapper = M>,
         {
-            type Output = TensorNeg<<Self as ToTensor>::Repr, <Self as ToTensor>::Mapper>;
+            type Output = Tensor<NegRepr<<$a as ToTensor>::Repr>, M>;
             fn neg(self) -> Self::Output {
-                let (a, mgr)=self.to_tensor().into_raw();
-                TensorNeg { a, res_mapper: mgr }
+                let (a, [mapper]) = ToTensor::to_tensor(self).into_raw();
+                unsafe { Tensor::from_raw_unchecked(NegRepr::from_raw(a), [mapper]) }
             }
         }
     };
@@ -65,47 +82,46 @@ impl_neg!(Tensor<A, M>);
 impl_neg!(&'a Tensor<A, M>,'a);
 impl_neg!(&'a mut Tensor<A, M>,'a);
 
-/// Runtime trait for negation operation.
-pub trait NegRuntime<A: TensorRepr>: Runtime {
-    /// The context type.
-    type Ctx: NegCtx<A>;
-    /// Returns the context.
-    fn neg_ctx(&self) -> Self::Ctx;
-}
-
+// Runtime-bound implementations for negation.
 macro_rules! impl_neg_runtime {
     ($a:ty $(,$life:lifetime)* ) => {
-        impl<$($life,)* A: TensorRepr, M: AxisMapper,RT:Runtime> Neg for $a
+        impl<$($life,)* A: TensorTupleRepr<1>, M: AxisMapper + Clone, RT: IsRuntime, Err> Neg for $a
         where
-            $a: ToBoundTensor<Mapper = M, Runtime = RT>,
-            RT: NegRuntime<<$a as ToBoundTensor>::Repr>,
+            $a: ToBoundTensorTuple<1, Mapper = M, Runtime = RT>,
+            RT: RuntimeFor<
+                Tensor<NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>, M>,
+            >,
+            <RT as RuntimeFor<
+                Tensor<NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>, M>,
+            >>::Ctx: TensorTupleContext<
+                RT::Mk,
+                1,
+                NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>,
+                M,
+                CType = Resulting<Raw, Err>,
+            >,
         {
             type Output =
             Result<
                 BoundTensor<
-                    <<RT as NegRuntime<
-                        <$a as ToBoundTensor>::Repr
-                    >>::Ctx as NegCtx<
-                        <$a as ToBoundTensor>::Repr
-                    >>::Res,
+                    <RT::Ctx as TensorTupleContext<
+                        RT::Mk,
+                        1,
+                        NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>,
+                        M,
+                    >>::Repr,
                     M,
                     RT,
                 >,
-                RuntimeErr<
-                    Infallible,
-                    <<RT as NegRuntime<
-                        <$a as ToBoundTensor>::Repr
-                    >>::Ctx as NegCtx<
-                        <$a as ToBoundTensor>::Repr
-                    >>::Err,
-                >,
+                RuntimeErr<Infallible, Err>,
             >;
             fn neg(self) -> Self::Output {
-                let (a, a_rt) = self.to_bound_tensor().into_raw();
-                let res = (-a)
-                    .with(a_rt.neg_ctx())
-                    .map_err(RuntimeErr::Ctx)?;
-                Ok(BoundTensor::from_raw(res, a_rt))
+                let (a, rt) = self.to_bound_tensor_tuple().into_raw();
+                let res = rt
+                    .ctx()
+                    .execute(-a)
+                    .map_err(RuntimeErr::Execute)?;
+                Ok(BoundTensor::from_raw(res, rt))
             }
         }
     };

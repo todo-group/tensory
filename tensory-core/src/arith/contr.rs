@@ -1,225 +1,191 @@
 use core::ops::Mul;
 
 use crate::{
-    bound_tensor::{BoundTensor, RuntimeErr},
-    mapper::{AxisMapper, ConnectAxisOrigin, ConnectMapper},
-    repr::TensorRepr,
-    tensor::{Tensor, TensorTask, ToTensor},
+    concept::{
+        container::{Raw, Resulting},
+        task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
+    },
+    mapper::{ConnectAxisOrigin, ConnectMapper},
+    repr::TensorTupleRepr,
+    tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
-/// Raw context of contraction operation.
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor must have the proper "axis structure" inherited from the input tensors describe with `axis_origin`.
-pub unsafe trait MulCtxImpl<Lhs: TensorRepr, Rhs: TensorRepr> {
-    /// The type of the result tensor representation.
-    type Res: TensorRepr;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs contraction operation on the tensors `lhs` and `rhs` with the given axis pairs.
-    ///
-    /// # Safety
-    ///
-    /// the user MUST ensure that `axis_origin` has the same numbers of axes same as the input tensors.
-    unsafe fn mul_unchecked(
-        self,
-        lhs: Lhs,
-        rhs: Rhs,
-        axis_origin: ConnectAxisOrigin<2>,
-    ) -> Result<Self::Res, Self::Err>;
-}
-
-/// Safe version of `MulCtxImpl`.
-///
-/// The blanket implementation checks input and panic if the condition is not satisfied.
-pub trait MulCtx<Lhs: TensorRepr, Rhs: TensorRepr>: MulCtxImpl<Lhs, Rhs> {
-    /// Safe version of `mul_unchecked`.
-    fn mul(
-        self,
-        lhs: Lhs,
-        rhs: Rhs,
-        axis_origin: ConnectAxisOrigin<2>,
-    ) -> Result<Self::Res, Self::Err>;
-}
-impl<C: MulCtxImpl<Lhs, Rhs>, Lhs: TensorRepr, Rhs: TensorRepr> MulCtx<Lhs, Rhs> for C {
-    fn mul(
-        self,
-        lhs: Lhs,
-        rhs: Rhs,
-        axis_origin: ConnectAxisOrigin<2>,
-    ) -> Result<Self::Res, Self::Err> {
-        if axis_origin.in_lens() != [lhs.naxes(), rhs.naxes()] {
-            panic!("axis_origin must match the number of axes with lhs and rhs");
-        }
-
-        unsafe { self.mul_unchecked(lhs, rhs, axis_origin) }
-    }
-}
-
-/// Intermediate task struct for contraction operation.
+/// Lazy representation for a tensor contraction operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorMul<L: TensorRepr, R: TensorRepr, M: AxisMapper> {
+pub struct MulRepr<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> {
     lhs: L,
     rhs: R,
-    res_mapper: M,
     axis_origin: ConnectAxisOrigin<2>,
 }
 
-impl<L: TensorRepr, R: TensorRepr, M: AxisMapper> TensorMul<L, R, M> {
-    /// Construct a `TensorMul` by provided closure.
-    pub fn by_manager(
-        lhs: Tensor<L, M>,
-        rhs: Tensor<R, M>,
-        manager: impl FnOnce(M, M) -> (M, ConnectAxisOrigin<2>),
-    ) -> Self {
-        let (lhs, lhs_mapper) = lhs.into_raw();
-        let (rhs, rhs_mapper) = rhs.into_raw();
+impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> MulRepr<L, R> {
+    /// Creates a representation after validating its axis origin.
+    pub fn from_raw(
+        lhs: L,
+        rhs: R,
+        axis_origin: ConnectAxisOrigin<2>,
+    ) -> Result<Self, (L, R, ConnectAxisOrigin<2>)> {
+        let [lhs_naxes] = lhs.naxes_array();
+        let [rhs_naxes] = rhs.naxes_array();
+        if axis_origin.in_lens() == [lhs_naxes, rhs_naxes] {
+            Ok(unsafe { Self::from_raw_unchecked(lhs, rhs, axis_origin) })
+        } else {
+            Err((lhs, rhs, axis_origin))
+        }
+    }
 
-        let (res_mapper, axis_origin) = manager(lhs_mapper, rhs_mapper);
-
+    /// Creates a representation without checking its axis origin.
+    ///
+    /// # Safety
+    ///
+    /// `axis_origin` must describe every axis of both inputs.
+    pub unsafe fn from_raw_unchecked(lhs: L, rhs: R, axis_origin: ConnectAxisOrigin<2>) -> Self {
         Self {
             lhs,
             rhs,
-            res_mapper,
             axis_origin,
         }
     }
-    /// Try to construct a `TensorMul` by provided closure.
-    pub fn try_by_manager<E>(
-        lhs: Tensor<L, M>,
-        rhs: Tensor<R, M>,
-        manager: impl FnOnce(M, M) -> Result<(M, ConnectAxisOrigin<2>), E>,
-    ) -> Result<Self, E> {
-        let (lhs, lhs_mapper) = lhs.into_raw();
-        let (rhs, rhs_mapper) = rhs.into_raw();
 
-        let (res_mapper, axis_origin) = manager(lhs_mapper, rhs_mapper)?;
-
-        Ok(Self {
-            lhs,
-            rhs,
-            res_mapper,
-            axis_origin,
-        })
+    /// Decomposes the representation into its inputs and axis origin.
+    pub fn into_raw(self) -> (L, R, ConnectAxisOrigin<2>) {
+        (self.lhs, self.rhs, self.axis_origin)
     }
 }
 
-impl<L: TensorRepr, R: TensorRepr, M: AxisMapper, C: MulCtxImpl<L, R>> TensorTask<C>
-    for TensorMul<L, R, M>
-{
-    type Output = Result<Tensor<C::Res, M>, C::Err>;
-
-    fn with(self, ctx: C) -> Self::Output {
-        //println!("lhs: {:?}, rhs: {:?}", lhs_legs, rhs_legs);
-        //println!("idx_pairs: {:?}", idx_pairs);
-        Ok(unsafe {
-            Tensor::from_raw_unchecked(
-                ctx.mul_unchecked(self.lhs, self.rhs, self.axis_origin)?,
-                self.res_mapper,
-            )
-        })
+unsafe impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> TensorTupleRepr<1> for MulRepr<L, R> {
+    fn naxes_array(&self) -> [usize; 1] {
+        [self.axis_origin.len()]
     }
 }
+
+impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> IsTask for MulRepr<L, R> {}
 
 // 9 combinations of Lhs/Rhs being owned/view/view_mut
 
 macro_rules! impl_mul {
-    ($l:ty,$r:ty $(,$life:lifetime)* ) => {
-        impl<$($life,)* L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>> Mul<$r> for $l
+    ($l:ty, $r:ty $(, $life:lifetime)*) => {
+        impl<$($life,)* L: TensorTupleRepr<1>, R: TensorTupleRepr<1>, M: ConnectMapper<2>>
+            Mul<$r> for $l
         where
             $l: ToTensor<Mapper = M>,
             $r: ToTensor<Mapper = M>,
         {
             type Output = Result<
-                TensorMul<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr, M>,
+                Tensor<MulRepr<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr>, M>,
                 <M as ConnectMapper<2>>::Err,
             >;
+
             fn mul(self, rhs: $r) -> Self::Output {
-                let lhs = ToTensor::to_tensor(self);
-                let rhs = ToTensor::to_tensor(rhs);
-                TensorMul::try_by_manager(lhs, rhs, |l, r| ConnectMapper::<2>::connect([l, r]))
+                let (lhs, [lhs_mapper]) = ToTensor::to_tensor(self).into_raw();
+                let (rhs, [rhs_mapper]) = ToTensor::to_tensor(rhs).into_raw();
+                ConnectMapper::<2>::connect([lhs_mapper, rhs_mapper]).map(
+                    |(res_mapper, axis_origin)| unsafe {
+                        Tensor::from_raw_unchecked(
+                            MulRepr {
+                                lhs,
+                                rhs,
+                                axis_origin,
+                            },
+                            [res_mapper],
+                        )
+                    },
+                )
             }
         }
     };
 }
 
 impl_mul!(Tensor<L, M>, Tensor<R, M>);
-impl_mul!(&'l Tensor<L, M>, Tensor<R, M>,'l);
-impl_mul!(&'l mut Tensor<L, M>, Tensor<R, M>,'l);
-impl_mul!(Tensor<L, M>, &'r Tensor<R, M>,'r);
-impl_mul!(&'l Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
-impl_mul!(&'l mut Tensor<L, M>, &'r Tensor<R, M>,'l,'r);
-impl_mul!(Tensor<L, M>, &'r mut Tensor<R, M>,'r);
-impl_mul!(&'l Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
-impl_mul!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>,'l,'r);
-
-/// Runtime trait for contraction operation.
-pub trait MulRuntime<Lhs: TensorRepr, Rhs: TensorRepr>: Runtime {
-    /// The context type.
-    type Ctx: MulCtxImpl<Lhs, Rhs>;
-    /// Returns the context.
-    fn mul_ctx(&self) -> Self::Ctx;
-}
-
-// // 9 combinations of Lhs/Rhs being owned/view/view_mut
-use crate::bound_tensor::{Runtime, ToBoundTensor};
+impl_mul!(&'l Tensor<L, M>, Tensor<R, M>, 'l);
+impl_mul!(&'l mut Tensor<L, M>, Tensor<R, M>, 'l);
+impl_mul!(Tensor<L, M>, &'r Tensor<R, M>, 'r);
+impl_mul!(&'l Tensor<L, M>, &'r Tensor<R, M>, 'l, 'r);
+impl_mul!(&'l mut Tensor<L, M>, &'r Tensor<R, M>, 'l, 'r);
+impl_mul!(Tensor<L, M>, &'r mut Tensor<R, M>, 'r);
+impl_mul!(&'l Tensor<L, M>, &'r mut Tensor<R, M>, 'l, 'r);
+impl_mul!(&'l mut Tensor<L, M>, &'r mut Tensor<R, M>, 'l, 'r);
 
 macro_rules! impl_mul_runtime {
-    ($l:ty,$r:ty $(,$life:lifetime)*) => {
-        impl<$($life,)* L: TensorRepr, R: TensorRepr, M: ConnectMapper<2>, RT:Runtime> Mul<$r> for $l
+    ($l:ty, $r:ty $(, $life:lifetime)*) => {
+        impl<
+            $($life,)*
+            L: TensorTupleRepr<1>,
+            R: TensorTupleRepr<1>,
+            M: ConnectMapper<2> + Clone,
+            RT: IsRuntime,
+            Err,
+        > Mul<$r> for $l
         where
-            $l: ToBoundTensor<Mapper = M, Runtime = RT>,
-            $r: ToBoundTensor<Mapper = M, Runtime = RT>,
-            RT: MulRuntime<<$l as ToBoundTensor>::Repr, <$r as ToBoundTensor>::Repr>,
+            $l: ToBoundTensorTuple<1, Mapper = M, Runtime = RT>,
+            $r: ToBoundTensorTuple<1, Mapper = M, Runtime = RT>,
+            RT: RuntimeFor<
+                Tensor<
+                    MulRepr<
+                        <$l as ToBoundTensorTuple<1>>::Repr,
+                        <$r as ToBoundTensorTuple<1>>::Repr,
+                    >,
+                    M,
+                >,
+            >,
+            <RT as RuntimeFor<
+                Tensor<
+                    MulRepr<
+                        <$l as ToBoundTensorTuple<1>>::Repr,
+                        <$r as ToBoundTensorTuple<1>>::Repr,
+                    >,
+                    M,
+                >,
+            >>::Ctx: TensorTupleContext<
+                RT::Mk,
+                1,
+                MulRepr<
+                    <$l as ToBoundTensorTuple<1>>::Repr,
+                    <$r as ToBoundTensorTuple<1>>::Repr,
+                >,
+                M,
+                CType = Resulting<Raw, Err>,
+            >,
         {
             type Output = Result<
                 BoundTensor<
-                    <<RT as MulRuntime<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Ctx as MulCtxImpl<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Res,
+                    <RT::Ctx as TensorTupleContext<
+                        RT::Mk,
+                        1,
+                        MulRepr<
+                            <$l as ToBoundTensorTuple<1>>::Repr,
+                            <$r as ToBoundTensorTuple<1>>::Repr,
+                        >,
+                        M,
+                    >>::Repr,
                     M,
                     RT,
                 >,
-                RuntimeErr<
-                    <M as ConnectMapper<2>>::Err,
-                    <<RT as MulRuntime<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Ctx as MulCtxImpl<
-                        <$l as ToBoundTensor>::Repr,
-                        <$r as ToBoundTensor>::Repr,
-                    >>::Err,
-                >,
+                RuntimeErr<<M as ConnectMapper<2>>::Err, Err>,
             >;
+
             fn mul(self, rhs: $r) -> Self::Output {
-                let (lhs, lhs_rt) = self.to_bound_tensor().into_raw();
-                let (rhs, rhs_rt) = rhs.to_bound_tensor().into_raw();
+                let (lhs, lhs_rt) = self.to_bound_tensor_tuple().into_raw();
+                let (rhs, rhs_rt) = rhs.to_bound_tensor_tuple().into_raw();
 
                 if lhs_rt != rhs_rt {
                     return Err(RuntimeErr::Runtime);
                 }
-                let res = (lhs * rhs)
-                    .map_err(RuntimeErr::Axis)?
-                    .with(lhs_rt.mul_ctx())
-                    .map_err(RuntimeErr::Ctx)?;
-                Ok(BoundTensor::from_raw(res, lhs_rt))
+                let rt = lhs_rt;
+                let task = (lhs * rhs).map_err(RuntimeErr::Defer)?;
+                let res = rt.ctx().execute(task).map_err(RuntimeErr::Execute)?;
+                Ok(BoundTensor::from_raw(res, rt))
             }
         }
     };
 }
 
 impl_mul_runtime!(BoundTensor<L, M, RT>, BoundTensor<R, M, RT>);
-impl_mul_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
-impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>,'l);
-impl_mul_runtime!(BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'r);
-impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
-impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>,'l,'r);
-impl_mul_runtime!(BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'r);
-impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
-impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>,'l,'r);
+impl_mul_runtime!(&'l BoundTensor<L, M, RT>, BoundTensor<R, M, RT>, 'l);
+impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, BoundTensor<R, M, RT>, 'l);
+impl_mul_runtime!(BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>, 'r);
+impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>, 'l, 'r);
+impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r BoundTensor<R, M, RT>, 'l, 'r);
+impl_mul_runtime!(BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>, 'r);
+impl_mul_runtime!(&'l BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>, 'l, 'r);
+impl_mul_runtime!(&'l mut BoundTensor<L, M, RT>, &'r mut BoundTensor<R, M, RT>, 'l, 'r);

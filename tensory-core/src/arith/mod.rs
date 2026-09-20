@@ -51,24 +51,24 @@ mod contr;
 pub use contr::*;
 
 /// A marker trait for types that can be used as scalars in tensor arithmetic operations.
-pub trait TensorScalar {}
-impl TensorScalar for bool {}
-impl TensorScalar for i8 {}
-impl TensorScalar for i16 {}
-impl TensorScalar for i32 {}
-impl TensorScalar for i64 {}
-impl TensorScalar for i128 {}
-impl TensorScalar for isize {}
-impl TensorScalar for u8 {}
-impl TensorScalar for u16 {}
-impl TensorScalar for u32 {}
-impl TensorScalar for u64 {}
-impl TensorScalar for u128 {}
-impl TensorScalar for usize {}
-//impl TensorScalar for f16 {}
-impl TensorScalar for f32 {}
-impl TensorScalar for f64 {}
-// impl TensorScalar for Complex<f32> {}
-// impl TensorScalar for Complex<f64> {}
+pub trait Scalar {}
+impl Scalar for bool {}
+impl Scalar for i8 {}
+impl Scalar for i16 {}
+impl Scalar for i32 {}
+impl Scalar for i64 {}
+impl Scalar for i128 {}
+impl Scalar for isize {}
+impl Scalar for u8 {}
+impl Scalar for u16 {}
+impl Scalar for u32 {}
+impl Scalar for u64 {}
+impl Scalar for u128 {}
+impl Scalar for usize {}
+//impl Scalar for f16 {}
+impl Scalar for f32 {}
+impl Scalar for f64 {}
+// impl Scalar for Complex<f32> {}
+// impl Scalar for Complex<f64> {}
 
-//impl TensorScalar for f128 {}
+//impl Scalar for f128 {}
