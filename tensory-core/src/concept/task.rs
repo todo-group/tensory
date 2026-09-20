@@ -140,7 +140,9 @@ impl<T: IsBindable, RT: IsRuntime> BoundObject<T, RT> {
 /// Provides syntax sugar for binding [`IsBindable`] types to a runtime.
 pub trait BoundableExt: IsBindable {
     /// Binds the object with a runtime, producing a runtime-bound object.
-    fn bind<RT: IsRuntime>(self, runtime: RT) -> BoundObject<Self, RT>;
+    fn bind<RT: IsRuntime>(self, runtime: RT) -> BoundObject<Self, RT>
+    where
+        Self: Sized;
 }
 impl<T: IsBindable> BoundableExt for T {
     fn bind<RT: IsRuntime>(self, runtime: RT) -> BoundObject<Self, RT> {
