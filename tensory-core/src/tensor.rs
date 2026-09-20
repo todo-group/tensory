@@ -1,7 +1,5 @@
 //! Layer 2 tensor concept: tensor with axes each indexed with locally unique ID =: legs.
 
-use thiserror::Error;
-
 use crate::{
     concept::{
         container::{ContainerImpl, ContainerMapImpl},
