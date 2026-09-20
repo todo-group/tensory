@@ -63,7 +63,7 @@ impl<T: IsTask> TaskExt for T {
 ///
 /// `Clone` and `Eq` must preserve runtime identity. A cheap `Clone`
 /// implementation is recommended.
-pub trait IsRuntime: Clone + Eq {}
+pub unsafe trait IsRuntime: Clone + Eq {}
 
 /// Provides a context for a task.
 ///
