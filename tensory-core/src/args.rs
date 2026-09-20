@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 #[macro_export]
+/// Builds a leg set or a leg-to-value mapping argument.
 macro_rules! leg {
     ( $( $x:expr ),* ) => {
         $crate::args::LegSetArg::from_raw([$($x),*].into_iter())
@@ -12,6 +13,7 @@ macro_rules! leg {
     };
 }
 
+/// Builds a leg-to-value mapping from two arrays of equal length.
 pub fn _from_array_pair<K, V, const N: usize>(
     keys: [K; N],
     values: [V; N],
@@ -20,6 +22,7 @@ pub fn _from_array_pair<K, V, const N: usize>(
 }
 
 #[macro_export]
+/// Builds a leg set argument from comma-separated expressions.
 macro_rules! ls {
     ( $( $x:expr ),* ) => {
         $crate::args::LegSetArg::from_raw([$($x),*].into_iter())
@@ -27,6 +30,7 @@ macro_rules! ls {
 }
 
 #[macro_export]
+/// Builds a leg-to-value mapping argument from comma-separated pairs.
 macro_rules! lm {
     ( $( $x:expr => $y:expr ),* ) => {
         $crate::args::_from_array_pair([$($x),*],[$($y),*])
@@ -68,29 +72,40 @@ macro_rules! lm {
 // }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// A collection of axis IDs supplied to a mapper operation.
 pub struct LegSetArg<T: ExactSizeIterator>(T);
 
 impl<T: ExactSizeIterator> LegSetArg<T> {
+    /// Wraps an exact-size iterator as a leg set argument.
     pub fn from_raw(legs: T) -> Self {
         Self(legs)
     }
+    /// Returns the wrapped iterator.
     pub fn into_raw(self) -> T {
         self.0
     }
 }
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// A collection of axis IDs paired with operation-specific values.
 pub struct LegMapArg<K: ExactSizeIterator, V: ExactSizeIterator>(K, V);
 
 impl<K: ExactSizeIterator, V: ExactSizeIterator> LegMapArg<K, V> {
+    /// Creates a mapping argument when both iterators have the same length.
     pub fn from_raw(legs: K, values: V) -> Result<Self, (K, V)> {
         if legs.len() != values.len() {
             return Err((legs, values));
         }
         Ok(unsafe { Self::from_raw_unchecked(legs, values) })
     }
+    /// Wraps two iterators without checking that their lengths match.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `legs.len() == values.len()`.
     pub unsafe fn from_raw_unchecked(legs: K, values: V) -> Self {
         Self(legs, values)
     }
+    /// Returns the wrapped key and value iterators.
     pub fn into_raw(self) -> (K, V) {
         (self.0, self.1)
     }
@@ -159,6 +174,7 @@ impl<K: ExactSizeIterator, V: ExactSizeIterator> LegMapArg<K, V> {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("leg error")]
+/// Error returned by a leg argument operation.
 pub struct LegErr;
 
 // #[cfg(test)]

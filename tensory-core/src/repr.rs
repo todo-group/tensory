@@ -1,60 +1,119 @@
-//! Layer 1 tensor concept: tensor with axes 0-indexed with usize, only valid in the tensor.
+//! Concepts for tensor representations and the forms that support them.
+//!
+//! This module defines representations of one or more values, together with
+//! their immutable, mutable, and owned forms and the context contract for
+//! operations that preserve them. A representation's semantic axis order is
+//! the correspondence between an axis's position and its conceptual identity;
+//! preserving it prevents an operation from silently reinterpreting one axis
+//! as another.
 
-/// Minimal interface for tensor representations.
+use crate::concept::{
+    container::ContainerImpl,
+    task::{Context, IsTask},
+};
+
+/// Describes the representation of a fixed-size tuple of values.
 ///
-/// In the conceptual model, a tensor representation is a structured data object with multiple axes, each indexed from `0` up to `naxes() - 1`.
-///
-/// In practice, a type implementing this trait serves as a handle for resource allocation and management.
+/// `N` determines the number of represented values. The values may have
+/// different concrete representation types.
 ///
 /// # Safety
 ///
-/// The implementor MUST ensure the following invariants:
-///
-/// - The number of axes of the tensor representation is fixed for the same object, even through mutable operations.
-/// - The "semantic order" of the axes are never changed for the same object, even through mutable operations.
-///
-/// We refer the above invariants as "semantic structure of axes", or simply "axis structure". Here, the "semantic order" refers to the assignment of the usize indices to the conceptual axes, which are fully distinguished. See `Tensor` for more integrated explanation of "semantic order" (described as "semantic assignment").
-///
-/// `mem::{swap,replace,take,...}` syntactically violate the above conditons, but these operations semantically do not change the objects but move them. So we think the above conditions are not violated by these operations.
-pub unsafe trait TensorRepr: Sized {
-    /// Returns the number of axes of the tensor. this number is fixed for the same object even through mutable operations.
-    ///
-    /// this function serves as a dynamic version of `const N:usize`.
-    fn naxes(&self) -> usize;
+/// Implementations must preserve the number and semantic axis order of every
+/// represented value through mutable operations.
+pub unsafe trait TensorTupleRepr<const N: usize>: Sized {
+    /// Returns the number of axes for each represented value.
+    fn naxes_array(&self) -> [usize; N];
 }
 
-/// Interface to generate a immutable view representation of itself.
+/// Syntax sugar for [`TensorTupleRepr<1>`].
+///
+/// It provides the single-representation form and its dynamic axis count.
+pub trait TensorRepr: TensorTupleRepr<1> {
+    /// Returns the number of axes.
+    ///
+    /// This is the runtime counterpart of the tuple's const `N` parameter.
+    fn naxes(&self) -> usize;
+}
+impl<R: TensorTupleRepr<1>> TensorRepr for R {
+    fn naxes(&self) -> usize {
+        let [naxes] = self.naxes_array();
+        naxes
+    }
+}
+
+unsafe impl<A: TensorRepr, B: TensorRepr> TensorTupleRepr<2> for (A, B) {
+    fn naxes_array(&self) -> [usize; 2] {
+        [self.0.naxes(), self.1.naxes()]
+    }
+}
+
+unsafe impl<A: TensorRepr, B: TensorRepr, C: TensorRepr> TensorTupleRepr<3> for (A, B, C) {
+    fn naxes_array(&self) -> [usize; 3] {
+        [self.0.naxes(), self.1.naxes(), self.2.naxes()]
+    }
+}
+
+/// Provides an immutable view of a representation.
 ///
 /// # Safety
 ///
-/// The implementor MUST ensure that the view representation has the same semantic structure of axes as the original representation.
-pub unsafe trait AsViewRepr<'a>: TensorRepr {
-    /// Immutable view representation type.
-    type View: TensorRepr;
-    /// Returns an immutable view representation of itself. The view has the same semantic structure of axes as the original representation.
+/// The view must preserve the number and semantic axis order of every
+/// represented value.
+pub unsafe trait AsViewRepr<'a, const N: usize>: TensorTupleRepr<N> {
+    /// Immutable view type.
+    type View: TensorTupleRepr<N>;
+    /// Returns an immutable view of every represented value.
     fn view(&'a self) -> Self::View;
 }
 
-/// Interface to generate a mutable view representation of itself.
+/// Provides a mutable view of a representation.
 ///
 /// # Safety
 ///
-/// The implementor MUST ensure that the view representation has the same semantic structure of axes as the original representation.
-pub unsafe trait AsViewMutRepr<'a>: TensorRepr {
-    /// Mutable view representation type.
-    type ViewMut: TensorRepr;
-    /// Returns a mutable view representation of itself. The view has the same semantic structure of axes as the original representation.
+/// The mutable view must preserve the number and semantic axis order of every
+/// represented value.
+pub unsafe trait AsViewMutRepr<'a, const N: usize>: TensorTupleRepr<N> {
+    /// Mutable view type.
+    type ViewMut: TensorTupleRepr<N>;
+    /// Returns a mutable view of every represented value.
     fn view_mut(&'a mut self) -> Self::ViewMut;
 }
 
-/// Interface to generate an owned representation of itself.
+/// Provides an owned form of a representation.
 ///
 /// # Safety
 ///
-/// The implementor MUST ensure that the owned representation has the same semantic structure of axes as the original representation.
-pub unsafe trait IntoOwnedRepr: TensorRepr {
+/// The owned representation must preserve the number and semantic axis order
+/// of every represented value.
+pub unsafe trait IntoOwnedRepr<const N: usize>: TensorTupleRepr<N> {
     /// Owned representation type.
-    type Owned: TensorRepr;
-    /// Returns an owned representation of itself. The owned representation has the same semantic structure of axes as the original representation.
-    fn into_owned_repr(self) -> Self::Owned;
+    type Owned: TensorTupleRepr<N>;
+    /// Converts the representation into its owned form.
+    fn into_owned(self) -> Self::Owned;
+}
+
+/// Marks a context whose output preserves the representation structure of its
+/// task.
+///
+/// `Self::Repr` is the representation produced by the context, and `CType`
+/// describes how it is wrapped in the context's output.
+///
+/// # Type Parameters
+///
+/// * `Mk` identifies the underlying [`Context`] implementation.
+/// * `N` is the number of represented values.
+/// * `T` is the task whose representation is preserved.
+///
+/// # Safety
+///
+/// The [`Context::execute`] implementation must preserve the number and
+/// semantic axis order of `T` in every representation it produces.
+pub unsafe trait ReprContext<Mk, const N: usize, T: TensorTupleRepr<N> + IsTask>:
+    Context<Mk, T, Output = <Self::CType as ContainerImpl<Self::Repr>>::Container>
+{
+    /// Representation produced by the context.
+    type Repr: TensorTupleRepr<N>;
+    /// Container description for the context output.
+    type CType: ContainerImpl<Self::Repr>;
 }

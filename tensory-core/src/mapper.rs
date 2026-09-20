@@ -42,30 +42,51 @@ pub unsafe trait AxisMapper: Sized {
     fn naxes(&self) -> usize;
 }
 
+/// Constructs a mapper from an owned precursor value.
 pub trait BuildableMapper<P>: AxisMapper {
+    /// Error returned when the precursor cannot form a valid mapper.
     type Err;
+    /// Builds a mapper from `precursor`.
     fn build(precursor: P) -> Result<Self, Self::Err>;
 }
 
+/// Constructs a mapper from a precursor while preserving its source data.
 pub trait SynBuildableMapper<P>: AxisMapper {
+    /// Error returned when the precursor cannot form a valid mapper.
     type Err;
+    /// Builds a mapper from `precursor` without consuming the source semantics.
     fn syn_build(precursor: P) -> Result<Self, Self::Err>;
 }
 
+/// Overlays several mappers into one mapper and records the index mapping.
+///
+/// # Safety
+///
+/// Implementations must preserve the axis structure and ensure that the returned
+/// mapping agrees with the returned mapper.
 pub unsafe trait OverlayMapper<const N: usize>: AxisMapper {
+    /// Error returned when the mappers cannot be overlaid.
     type Err;
+    /// Combines `mappers` and returns the corresponding axis mapping.
     fn overlay(mappers: [Self; N]) -> Result<(Self, OverlayAxisMapping<N>), Self::Err>;
 }
 
+/// Maps each axis of an overlaid mapper to an input mapper axis.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct OverlayAxisMapping<const N: usize> {
     n: usize,
     maps: [Vec<usize>; N],
 }
 impl<const N: usize> OverlayAxisMapping<N> {
+    /// Creates a mapping without validating its indices.
+    ///
+    /// # Safety
+    ///
+    /// Every mapping must have length `n` and contain each index in `0..n` exactly once.
     pub unsafe fn from_raw_unchecked(n: usize, maps: [Vec<usize>; N]) -> Self {
         Self { n, maps }
     }
+    /// Creates a validated overlay axis mapping.
     pub fn from_raw(n: usize, maps: [Vec<usize>; N]) -> Result<Self, (usize, [Vec<usize>; N])> {
         let mut seen = vec![false; n];
         for lane in 0..N {
@@ -84,25 +105,42 @@ impl<const N: usize> OverlayAxisMapping<N> {
         }
         Ok(unsafe { Self::from_raw_unchecked(n, maps) })
     }
+    /// Returns the number of axes in each input mapper.
     pub fn naxes(&self) -> usize {
         self.n
     }
+    /// Decomposes the mapping into its raw components.
     pub fn into_raw(self) -> (usize, [Vec<usize>; N]) {
         (self.n, self.maps)
     }
 }
 
+/// Connects axes from several mappers and records the connected origins.
+///
+/// # Safety
+///
+/// Implementations must preserve the axis structure and ensure that every
+/// reported connection is represented by the returned mapper.
 pub unsafe trait ConnectMapper<const N: usize>: AxisMapper {
+    /// Error returned when the mappers cannot be connected.
     type Err;
+    /// Connects `mappers` and returns the connection metadata.
     fn connect(mappers: [Self; N]) -> Result<(Self, ConnectAxisOrigin<N>), Self::Err>;
 }
 
+/// Describes which input axes were connected.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct ConnectAxisOrigin<const N: usize> {
     in_lens: [usize; N],
     axis_connection: Vec<((usize, usize), (usize, usize))>,
 }
 impl<const N: usize> ConnectAxisOrigin<N> {
+    /// Creates connection metadata without validating its endpoints.
+    ///
+    /// # Safety
+    ///
+    /// Every endpoint must be within its corresponding input length, each axis
+    /// must occur at most once, and connections must join different inputs.
     pub unsafe fn from_raw_unchecked(
         in_lens: [usize; N],
         axis_connection: Vec<((usize, usize), (usize, usize))>,
@@ -112,6 +150,7 @@ impl<const N: usize> ConnectAxisOrigin<N> {
             axis_connection,
         }
     }
+    /// Creates validated connection metadata.
     pub fn from_raw(
         in_lens: [usize; N],
         axis_connection: Vec<((usize, usize), (usize, usize))>,
@@ -138,31 +177,54 @@ impl<const N: usize> ConnectAxisOrigin<N> {
         Ok(unsafe { Self::from_raw_unchecked(in_lens, axis_connection) })
     }
 
+    /// Returns the input axis lengths.
     pub fn in_lens(&self) -> &[usize] {
         &self.in_lens
     }
+    /// Returns the number of axes remaining after connections.
     pub fn len(&self) -> usize {
         self.in_lens.iter().sum::<usize>() - 2 * self.axis_connection.len()
     }
+    /// Returns whether no axes remain after connections.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Decomposes the metadata into its raw components.
     pub fn into_raw(self) -> ([usize; N], Vec<((usize, usize), (usize, usize))>) {
         (self.in_lens, self.axis_connection)
     }
 }
 
+/// Groups axes from a mapper according to a queue.
+///
+/// # Safety
+///
+/// Implementations must preserve the mapper's axis structure and ensure that
+/// the returned groups describe exactly the input axes.
 pub unsafe trait GroupMapper<const N: usize, Q>: AxisMapper {
+    /// Mapper produced by the grouping operation.
     type Grouped: GroupedMapper<N, Mapper = Self>;
+    /// Error returned when grouping fails.
     type Err;
+    /// Groups the mapper's axes according to `queue`.
     fn split(self, queue: Q) -> Result<(Self::Grouped, GroupedAxes<N>), Self::Err>;
 }
+/// Records the groups produced by a grouping operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct GroupedAxes<const N: usize> {
     len: usize,
     groups: [Vec<usize>; N],
 }
 impl<const N: usize> GroupedAxes<N> {
+    /// Creates group metadata without validating its indices.
+    ///
+    /// # Safety
+    ///
+    /// Every input axis in `0..len` must occur exactly once in `groups`.
     pub unsafe fn from_raw_unchecked(len: usize, groups: [Vec<usize>; N]) -> Self {
         Self { len, groups }
     }
+    /// Creates validated group metadata.
     pub fn from_raw(len: usize, groups: [Vec<usize>; N]) -> Result<Self, (usize, [Vec<usize>; N])> {
         let mut seen = vec![false; len];
         for lane in 0..N {
@@ -173,35 +235,56 @@ impl<const N: usize> GroupedAxes<N> {
                 seen[i] = true;
             }
         }
-        for i in 0..len {
-            if !seen[i] {
-                return Err((len, groups));
-            }
+        if seen.iter().take(len).any(|present| !present) {
+            return Err((len, groups));
         }
         Ok(unsafe { Self::from_raw_unchecked(len, groups) })
     }
+    /// Returns the number of input axes represented by the groups.
     pub fn len(&self) -> usize {
         self.len
     }
+    /// Returns whether the groups represent no input axes.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    /// Decomposes the metadata into its raw components.
     pub fn into_raw(self) -> (usize, [Vec<usize>; N]) {
         (self.len, self.groups)
     }
 }
 
+/// Splits axes into equally sized groups.
+///
+/// # Safety
+///
+/// Implementations must preserve the mapper's axis structure and ensure that
+/// the returned groups are complete and have equal lengths.
 pub unsafe trait EquivGroupMapper<const N: usize, Q>: AxisMapper {
+    /// Mapper produced by the grouping operation.
     type Grouped: GroupedMapper<N, Mapper = Self>;
+    /// Error returned when grouping fails.
     type Err;
+    /// Splits the mapper's axes into equivalent groups.
     fn equiv_split(self, queue: Q) -> Result<(Self::Grouped, EquivGroupedAxes<N>), Self::Err>;
 }
+/// Records equally sized groups produced by a grouping operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct EquivGroupedAxes<const N: usize> {
     len: usize,
     groups: [Vec<usize>; N],
 }
 impl<const N: usize> EquivGroupedAxes<N> {
+    /// Creates group metadata without validating its indices.
+    ///
+    /// # Safety
+    ///
+    /// Every input axis in `0..len` must occur exactly once in `groups`, and
+    /// every group must have the same length.
     pub unsafe fn from_raw_unchecked(len: usize, groups: [Vec<usize>; N]) -> Self {
         Self { len, groups }
     }
+    /// Creates validated equivalent-group metadata.
     pub fn from_raw(len: usize, groups: [Vec<usize>; N]) -> Result<Self, (usize, [Vec<usize>; N])> {
         let mut seen = vec![false; len];
         for lane in 0..N {
@@ -212,10 +295,8 @@ impl<const N: usize> EquivGroupedAxes<N> {
                 seen[i] = true;
             }
         }
-        for i in 0..len {
-            if !seen[i] {
-                return Err((len, groups));
-            }
+        if seen.iter().take(len).any(|present| !present) {
+            return Err((len, groups));
         }
         if N > 0 {
             let glen = groups[0].len();
@@ -228,34 +309,62 @@ impl<const N: usize> EquivGroupedAxes<N> {
 
         Ok(unsafe { Self::from_raw_unchecked(len, groups) })
     }
+    /// Returns the number of input axes represented by the groups.
     pub fn len(&self) -> usize {
         self.len
     }
+    /// Returns whether the groups represent no input axes.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+    /// Decomposes the metadata into its raw components.
     pub fn into_raw(self) -> (usize, [Vec<usize>; N]) {
         (self.len, self.groups)
     }
 }
 
+/// Provides access to the mapper produced by a grouping operation.
+///
+/// # Safety
+///
+/// Implementations must ensure that the associated mapper remains consistent
+/// with the grouping metadata.
 pub unsafe trait GroupedMapper<const N: usize> {
+    /// Mapper associated with the grouped axes.
     type Mapper: AxisMapper;
 }
 
+/// Decomposes grouped axes into a fixed number of output mappers.
+///
+/// # Safety
+///
+/// Implementations must preserve the grouped mapper's axis semantics and make
+/// the returned mappers agree with `conf`.
 pub unsafe trait DecompGroupedMapper<const N: usize, const M: usize>:
     GroupedMapper<N>
 {
+    /// Error returned when decomposition fails.
     type Err;
+    /// Decomposes the grouped mapper according to `conf`.
     fn decomp(
         self,
         conf: DecompConf<N, M, <Self::Mapper as AxisMapper>::Id>,
     ) -> Result<[Self::Mapper; M], Self::Err>;
 }
 
+/// Describes how grouped axes should be decomposed.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct DecompConf<const N: usize, const M: usize, Id> {
     group_belongs: [usize; N],
     new_bonds: Vec<((usize, Id), (usize, Id))>,
 }
 impl<const N: usize, const M: usize, Id> DecompConf<N, M, Id> {
+    /// Creates a decomposition configuration without validation.
+    ///
+    /// # Safety
+    ///
+    /// Every group index must be less than `M`, and connected groups must be
+    /// distinct.
     pub unsafe fn from_raw_unchecked(
         group_belongs: [usize; N],
         new_bonds: Vec<((usize, Id), (usize, Id))>,
@@ -265,6 +374,7 @@ impl<const N: usize, const M: usize, Id> DecompConf<N, M, Id> {
             new_bonds,
         }
     }
+    /// Creates a validated decomposition configuration.
     pub fn from_raw(
         group_belongs: [usize; N],
         new_bonds: Vec<((usize, Id), (usize, Id))>,
@@ -281,27 +391,42 @@ impl<const N: usize, const M: usize, Id> DecompConf<N, M, Id> {
         }
         Ok(unsafe { Self::from_raw_unchecked(group_belongs, new_bonds) })
     }
+    /// Decomposes the configuration into its raw components.
     pub fn into_raw(self) -> ([usize; N], Vec<((usize, Id), (usize, Id))>) {
         (self.group_belongs, self.new_bonds)
     }
 }
 
+/// Solves grouped axes into a fixed number of output mappers.
+///
+/// # Safety
+///
+/// Implementations must preserve the grouped mapper's axis semantics and make
+/// the returned mappers agree with `conf`.
 pub unsafe trait SolveGroupedMapper<const N: usize, const M: usize>:
     GroupedMapper<N>
 {
+    /// Error returned when solving fails.
     type Err;
+    /// Solves the grouped mapper according to `conf`.
     fn solve(
         self,
         conf: SolveConf<N, M, <Self::Mapper as AxisMapper>::Id>,
     ) -> Result<[Self::Mapper; M], Self::Err>;
 }
 
+/// Describes how grouped axes are assigned to output mappers.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SolveConf<const N: usize, const M: usize, Id> {
     group_belongs: [[bool; N]; M],
     new_legs: Vec<(usize, Id)>,
 }
 impl<const N: usize, const M: usize, Id> SolveConf<N, M, Id> {
+    /// Creates a solve configuration without validation.
+    ///
+    /// # Safety
+    ///
+    /// Every output index in `new_legs` must be less than `M`.
     pub unsafe fn from_raw_unchecked(
         group_belongs: [[bool; N]; M],
         new_legs: Vec<(usize, Id)>,
@@ -311,6 +436,7 @@ impl<const N: usize, const M: usize, Id> SolveConf<N, M, Id> {
             new_legs,
         }
     }
+    /// Creates a validated solve configuration.
     pub fn from_raw(
         group_belongs: [[bool; N]; M],
         new_legs: Vec<(usize, Id)>,
@@ -322,13 +448,17 @@ impl<const N: usize, const M: usize, Id> SolveConf<N, M, Id> {
         }
         Ok(unsafe { Self::from_raw_unchecked(group_belongs, new_legs) })
     }
+    /// Decomposes the configuration into its raw components.
     pub fn into_raw(self) -> ([[bool; N]; M], Vec<(usize, Id)>) {
         (self.group_belongs, self.new_legs)
     }
 }
 
+/// Reorders values according to the mapper's axis IDs.
 pub trait SortMapper<Content>: AxisMapper {
+    /// Error returned when an axis cannot be translated.
     type Err;
+    /// Sorts `map` into the mapper's axis order.
     fn sort<
         'a,
         K: ExactSizeIterator + Iterator<Item = &'a Self::Id>,
@@ -341,21 +471,31 @@ pub trait SortMapper<Content>: AxisMapper {
         <Self as AxisMapper>::Id: 'a;
 }
 
+/// Error returned by a split followed by a decomposition operation.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Error)]
 pub enum SplittyErr<SE, DE> {
+    /// The initial axis split failed.
     #[error("Split error: {0}")]
     Split(SE),
+    /// The operation using the split result failed.
     #[error("Use error: {0}")]
     Use(DE),
 }
 
+/// Replaces the mapper's selected axes.
 pub trait ReplaceMapper<Q>: AxisMapper {
+    /// Error returned when replacement fails.
     type Err;
+    /// Replaces axes selected by `query`.
     fn replace(self, query: Q) -> Result<Self, Self::Err>;
 }
 
+/// Translates an external axis identifier into another representation.
 pub trait TranslateMapper<Exp>: AxisMapper {
+    /// Result type produced by translation.
     type Res;
+    /// Error returned when translation fails.
     type Err;
+    /// Translates `leg`.
     fn translate(&self, leg: Exp) -> Result<Self::Res, Self::Err>;
 }
