@@ -11,24 +11,6 @@ use crate::{
 
 use core::{convert::Infallible, ops::Neg};
 
-/*
-/// Raw context of negation operation.
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
-pub unsafe trait NegCtx<A: TensorTupleRepr<1>> {
-    /// The type of the result tensor representation.
-    type Res: TensorTupleRepr<1>;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs negation operation on the tensor `a`.
-    fn negate(self, a: A) -> Result<Self::Res, Self::Err>;
-}
-
-*/
-
 /// Operation for element-wise negation.
 pub struct NegOp;
 

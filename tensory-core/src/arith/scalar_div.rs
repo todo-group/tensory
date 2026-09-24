@@ -14,23 +14,6 @@ use crate::{
     },
 };
 
-/*
-/// Raw context of left scalar division operation.
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor has the same "axis structure" as the input tensor.
-pub unsafe trait LeftScalarDivCtx<A: TensorTupleRepr<1>, E> {
-    /// The type of the result tensor representation.
-    type Res: TensorTupleRepr<1>;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs left scalar division operation on the tensor `a`.
-    fn left_scalar_div(self, a: A, scalar: E) -> Result<Self::Res, Self::Err>;
-}
-*/
-
 /// Operation for element-wise left scalar division.
 pub struct LeftScalarDivOp<E>(pub E);
 
