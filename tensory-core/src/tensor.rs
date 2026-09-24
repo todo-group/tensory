@@ -3,7 +3,7 @@
 use crate::{
     concept::{
         container::{ContainerImpl, ContainerMapImpl},
-        task::{BoundObject, Context, IsBindable, IsRuntime, IsTask},
+        task::{BoundObject, Context, IsBindable, IsRuntime, IsTask, RuntimeFor},
     },
     mapper::{AxisMapper, ReplaceMapper},
     repr::{AsViewMutRepr, AsViewRepr, IntoOwnedRepr, ReprContext, TensorRepr, TensorTupleRepr},
@@ -378,6 +378,25 @@ where
 {
     type Repr = C::Repr;
     type CType = C::CType;
+}
+
+impl<const N: usize, T: TensorTupleRepr<N> + IsTask, M: AxisMapper, RT: RuntimeFor<T>>
+    RuntimeFor<TensorTuple<N, T, M>> for RT
+where
+    <Self as RuntimeFor<T>>::Ctx: ReprContext<<Self as RuntimeFor<T>>::Mk, N, T>,
+    <<Self as RuntimeFor<T>>::Ctx as ReprContext<<Self as RuntimeFor<T>>::Mk, N, T>>::CType:
+        ContainerMapImpl<
+                <<Self as RuntimeFor<T>>::Ctx as ReprContext<<Self as RuntimeFor<T>>::Mk, N, T>>::Repr,
+                TensorTuple<N, <<Self as RuntimeFor<T>>::Ctx as ReprContext<<Self as RuntimeFor<T>>::Mk, N, T>>::Repr, M>,
+            >,
+{
+    type Mk = <Self as RuntimeFor<T>>::Mk;
+
+    type Ctx = <Self as RuntimeFor<T>>::Ctx;
+
+    fn ctx(&self) -> Self::Ctx {
+        self.ctx()
+    }
 }
 
 impl<const N: usize, T: TensorTupleRepr<N>, M: AxisMapper> IsBindable for TensorTuple<N, T, M> {}
