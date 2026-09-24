@@ -75,6 +75,12 @@ impl<const N: usize, R: TensorTupleRepr<N>, M: AxisMapper> TensorTuple<N, R, M> 
         &self.mappers
     }
 
+    /// Returns a mutable reference to the mappers for all represented tensors.
+    ///
+    /// # Safety
+    ///
+    /// The caller must preserve the number and semantic axis structure of all
+    /// represented tensors.
     pub unsafe fn mapper_array_mut(&mut self) -> &mut [M; N] {
         &mut self.mappers
     }
@@ -192,9 +198,13 @@ impl<A: TensorTupleRepr<1>, B: TensorTupleRepr<1>, C: TensorTupleRepr<1>, M: Axi
     }
 }
 
+/// Extension trait for packing ordinary tensors into tensor tuples.
 pub trait PackExt<const N: usize> {
+    /// Representation of the resulting tensor tuple.
     type Repr: TensorTupleRepr<N>;
+    /// Axis mapper of the resulting tensor tuple.
     type Mapper: AxisMapper;
+    /// Packs self, which is expected to be a tuple of ordinary tensors, into a tensor tuple.
     fn pack(self) -> TensorTuple<N, Self::Repr, Self::Mapper>;
 }
 impl<const N: usize, T: TensorTupleRepr<N>, M: AxisMapper> PackExt<N> for TensorTuple<N, T, M> {
@@ -347,6 +357,11 @@ where
     }
 }
 
+/// Marks a context as capable of handling tensor tuple tasks
+///
+/// # Safety
+///
+/// Implementors must ensure that the context preserves the semantic structure of the tensor tuple throughout its execution.
 pub unsafe trait TensorTupleContext<
     Mk,
     const N: usize,
@@ -359,7 +374,9 @@ pub unsafe trait TensorTupleContext<
         Output = <Self::CType as ContainerImpl<TensorTuple<N, Self::Repr, M>>>::Container,
     >
 {
+    /// The representation type of the resulting tensor tuple after execution.
     type Repr: TensorTupleRepr<N>;
+    /// The container type used to hold the resulting tensor tuple after execution.
     type CType: ContainerImpl<TensorTuple<N, Self::Repr, M>>;
 }
 
@@ -401,7 +418,10 @@ where
 
 impl<const N: usize, T: TensorTupleRepr<N>, M: AxisMapper> IsBindable for TensorTuple<N, T, M> {}
 
+/// A type alias for a bound tensor tuple, which pairs a tensor tuple with a specific runtime.
 pub type BoundTensorTuple<const N: usize, R, M, RT> = BoundObject<TensorTuple<N, R, M>, RT>;
+
+/// A type alias for a bound ordinary tensor, which is a bound tensor tuple with a single tensor.
 pub type BoundTensor<R, M, RT> = BoundTensorTuple<1, R, M, RT>;
 
 impl<const N: usize, R: TensorTupleRepr<N>, M: AxisMapper, RT: IsRuntime>
