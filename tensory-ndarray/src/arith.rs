@@ -9,31 +9,35 @@ use ndarray_linalg::{Lapack, Scalar};
 use num_traits::ConstZero;
 use tensory_core::{
     arith::{
-        AddCtxImpl, AddRuntime, CommutativeScalarDivCtx, CommutativeScalarDivRuntime,
-        CommutativeScalarMulCtx, CommutativeScalarMulRuntime, LeftScalarMulCtx, MulCtxImpl,
-        MulRuntime, NegCtx, NegRuntime, RightScalarMulCtx, SubCtxImpl, SubRuntime,
+        AddRepr, LeftScalarDivOp, LeftScalarDivRepr, LeftScalarMulOp, LeftScalarMulRepr, MulRepr,
+        NegRepr, RightScalarDivOp, RightScalarDivRepr, RightScalarMulOp, RightScalarMulRepr,
+        SubRepr,
     },
-    mapper::ConnectAxisOrigin,
+    concept::{
+        container::{Raw, Resulting},
+        refined::RefinedFrom,
+        task::{Context, RuntimeFor},
+    },
+    repr::ReprContext,
 };
 
 use crate::{
-    NdDenseRepr, NdDenseViewRepr, NdRuntime,
+    Nd, NdDenseRepr, NdDenseViewRepr, NdRuntime,
     tenalg::{error::TenalgErr, mul},
 };
 
-unsafe impl<'l, 'r, E> AddCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
+impl<'l, 'r, E> Context<Nd, AddRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for ()
 where
     &'l E: Add<&'r E, Output = E>,
 {
-    type Res = NdDenseRepr<E>;
-    type Err = TenalgErr;
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
 
-    unsafe fn add_unchecked(
+    fn execute(
         self,
-        lhs: NdDenseViewRepr<'l, E>,
-        rhs: NdDenseViewRepr<'r, E>,
-        axis_mapping: tensory_core::mapper::OverlayAxisMapping<2>,
-    ) -> Result<Self::Res, Self::Err> {
+        task: AddRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>,
+    ) -> Self::Output {
+        let (lhs, rhs, [axis_mapping], _) = task.into_raw();
+
         let lhs_raw = lhs.data;
         let rhs_raw = rhs.data;
 
@@ -52,19 +56,28 @@ where
     }
 }
 
-unsafe impl<'l, 'r, E> SubCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for ()
+unsafe impl<'l, 'r, E>
+    ReprContext<Nd, 1, AddRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for ()
+where
+    &'l E: Add<&'r E, Output = E>,
+{
+    type Repr = NdDenseRepr<E>;
+
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
+impl<'l, 'r, E> Context<Nd, SubRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for ()
 where
     &'l E: Sub<&'r E, Output = E>,
 {
-    type Res = NdDenseRepr<E>;
-    type Err = TenalgErr;
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
 
-    unsafe fn sub_unchecked(
+    fn execute(
         self,
-        lhs: NdDenseViewRepr<'l, E>,
-        rhs: NdDenseViewRepr<'r, E>,
-        axis_mapping: tensory_core::mapper::OverlayAxisMapping<2>,
-    ) -> Result<Self::Res, Self::Err> {
+        task: SubRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>,
+    ) -> Self::Output {
+        let (lhs, rhs, [axis_mapping], _) = task.into_raw();
+
         let lhs_raw = lhs.data;
         let rhs_raw = rhs.data;
 
@@ -83,65 +96,139 @@ where
     }
 }
 
-unsafe impl<E: Neg<Output = E> + Clone> NegCtx<NdDenseRepr<E>> for () {
-    type Res = NdDenseRepr<E>;
-    type Err = Infallible;
+unsafe impl<'l, 'r, E>
+    ReprContext<Nd, 1, SubRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for ()
+where
+    &'l E: Sub<&'r E, Output = E>,
+{
+    type Repr = NdDenseRepr<E>;
 
-    fn negate(self, a: NdDenseRepr<E>) -> Result<Self::Res, Self::Err> {
-        Ok(NdDenseRepr { data: -(a.data) })
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
+impl<E: Neg<Output = E> + Clone> Context<Nd, NegRepr<1, NdDenseRepr<E>>> for () {
+    type Output = Result<NdDenseRepr<E>, Infallible>;
+
+    fn execute(self, task: NegRepr<1, NdDenseRepr<E>>) -> Self::Output {
+        let (a, [axis_alloc], _) = task.into_raw();
+        let (_, [perm]) = axis_alloc.into_raw();
+
+        let ndr = -(a.data);
+
+        let ndr = ndr.permuted_axes(perm);
+        Ok(NdDenseRepr { data: ndr })
     }
 }
 
-unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> LeftScalarMulCtx<NdDenseRepr<E>, E> for () {
-    type Res = NdDenseRepr<E>;
-    type Err = Infallible;
+unsafe impl<E: Neg<Output = E> + Clone> ReprContext<Nd, 1, NegRepr<1, NdDenseRepr<E>>> for () {
+    type Repr = NdDenseRepr<E>;
 
-    fn left_scalar_mul(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
-        Ok(NdDenseRepr {
-            data: a.data * scalar,
-        })
+    type CType = Resulting<Raw, Infallible>;
+}
+
+impl<E: ScalarOperand + Mul<Output = E> + Clone>
+    Context<Nd, LeftScalarMulRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Output = Result<NdDenseRepr<E>, Infallible>;
+
+    fn execute(self, task: LeftScalarMulRepr<1, NdDenseRepr<E>, E>) -> Self::Output {
+        let (a, [axis_alloc], LeftScalarMulOp(scalar)) = task.into_raw();
+        let (_, [perm]) = axis_alloc.into_raw();
+
+        let ndr = a.data * scalar;
+        let ndr = ndr.permuted_axes(perm);
+        Ok(NdDenseRepr { data: ndr })
     }
 }
-unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> RightScalarMulCtx<NdDenseRepr<E>, E>
+
+unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone>
+    ReprContext<Nd, 1, LeftScalarMulRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Repr = NdDenseRepr<E>;
+
+    type CType = Resulting<Raw, Infallible>;
+}
+
+impl<E: ScalarOperand + Mul<Output = E> + Clone>
+    Context<Nd, RightScalarMulRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Output = Result<NdDenseRepr<E>, Infallible>;
+
+    fn execute(self, task: RightScalarMulRepr<1, NdDenseRepr<E>, E>) -> Self::Output {
+        let (a, [axis_alloc], RightScalarMulOp(scalar)) = task.into_raw();
+        let (_, [perm]) = axis_alloc.into_raw();
+
+        let ndr = a.data * scalar;
+        let ndr = ndr.permuted_axes(perm);
+        Ok(NdDenseRepr { data: ndr })
+    }
+}
+
+unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone>
+    ReprContext<Nd, 1, RightScalarMulRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Repr = NdDenseRepr<E>;
+
+    type CType = Resulting<Raw, Infallible>;
+}
+
+impl<E: ScalarOperand + Div<Output = E> + Clone>
+    Context<Nd, LeftScalarDivRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Output = Result<NdDenseRepr<E>, Infallible>;
+
+    fn execute(self, task: LeftScalarDivRepr<1, NdDenseRepr<E>, E>) -> Self::Output {
+        let (a, [axis_alloc], LeftScalarDivOp(scalar)) = task.into_raw();
+        let (_, [perm]) = axis_alloc.into_raw();
+
+        let ndr = a.data / scalar;
+        let ndr = ndr.permuted_axes(perm);
+        Ok(NdDenseRepr { data: ndr })
+    }
+}
+
+unsafe impl<E: ScalarOperand + Div<Output = E> + Clone>
+    ReprContext<Nd, 1, LeftScalarDivRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Repr = NdDenseRepr<E>;
+
+    type CType = Resulting<Raw, Infallible>;
+}
+
+impl<E: ScalarOperand + Div<Output = E> + Clone>
+    Context<Nd, RightScalarDivRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Output = Result<NdDenseRepr<E>, Infallible>;
+
+    fn execute(self, task: RightScalarDivRepr<1, NdDenseRepr<E>, E>) -> Self::Output {
+        let (a, [axis_alloc], RightScalarDivOp(scalar)) = task.into_raw();
+        let (_, [perm]) = axis_alloc.into_raw();
+
+        let ndr = a.data / scalar;
+        let ndr = ndr.permuted_axes(perm);
+        Ok(NdDenseRepr { data: ndr })
+    }
+}
+
+unsafe impl<E: ScalarOperand + Div<Output = E> + Clone>
+    ReprContext<Nd, 1, RightScalarDivRepr<1, NdDenseRepr<E>, E>> for ()
+{
+    type Repr = NdDenseRepr<E>;
+
+    type CType = Resulting<Raw, Infallible>;
+}
+
+impl<'l, 'r, E: Scalar> Context<Nd, MulRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>>
     for ()
 {
-    type Res = NdDenseRepr<E>;
-    type Err = Infallible;
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
 
-    fn right_scalar_mul(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
-        Ok(NdDenseRepr {
-            data: a.data * scalar,
-        })
-    }
-}
-unsafe impl<E: ScalarOperand + Mul<Output = E> + Clone> CommutativeScalarMulCtx<NdDenseRepr<E>, E>
-    for ()
-{
-}
-
-unsafe impl<E: ScalarOperand + Div<Output = E> + Clone> CommutativeScalarDivCtx<NdDenseRepr<E>, E>
-    for ()
-{
-    type Res = NdDenseRepr<E>;
-    type Err = Infallible;
-
-    fn scalar_div(self, a: NdDenseRepr<E>, scalar: E) -> Result<Self::Res, Self::Err> {
-        Ok(NdDenseRepr {
-            data: a.data / scalar,
-        })
-    }
-}
-
-unsafe impl<'l, 'r, E: Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for () {
-    type Res = NdDenseRepr<E>;
-    type Err = TenalgErr;
-
-    unsafe fn mul_unchecked(
+    fn execute(
         self,
-        lhs: NdDenseViewRepr<'l, E>,
-        rhs: NdDenseViewRepr<'r, E>,
-        axis_origin: ConnectAxisOrigin<2>,
-    ) -> Result<Self::Res, Self::Err> {
+        task: MulRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>,
+    ) -> Self::Output {
+        let (lhs, rhs, [axis_origin], _) = task.into_raw();
+
         let lhs_raw = lhs.data;
         let rhs_raw = rhs.data;
 
@@ -179,17 +266,17 @@ unsafe impl<'l, 'r, E: Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRep
         // let lhs_rem_idxa = &lhs_idxv_ordered.as_slice()[0..lhs_idxv_ordered.len() - conn_idxn];
         // let rhs_rem_idxa = &rhs_idxv_ordered.as_slice()[conn_idxn..];
 
-        #[cfg(test)]
-        {
-            use std::println;
-            println!("{:?}", lhs_rot.dim());
-            println!("{:?}", lhs_idxv_ordered);
-            println!("{:?}", rhs_rot.dim());
-            println!("{:?}", rhs_idxv_ordered);
+        // #[cfg(test)]
+        // {
+        //     use std::println;
+        //     println!("{:?}", lhs_rot.dim());
+        //     println!("{:?}", lhs_idxv_ordered);
+        //     println!("{:?}", rhs_rot.dim());
+        //     println!("{:?}", rhs_idxv_ordered);
 
-            //println!("{:?}", lhs_rem_idxa);
-            //println!("{:?}", rhs_rem_idxa);
-        }
+        //     //println!("{:?}", lhs_rem_idxa);
+        //     //println!("{:?}", rhs_rem_idxa);
+        // }
 
         // let mut z_idxv: Vec<(usize, usize)> = (0..z.shape().len()).map(|i| (0, i)).collect();
 
@@ -218,42 +305,70 @@ unsafe impl<'l, 'r, E: Scalar> MulCtxImpl<NdDenseViewRepr<'l, E>, NdDenseViewRep
     }
 }
 
-impl<'l, 'r, E> AddRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for NdRuntime
+unsafe impl<'l, 'r, E: Scalar>
+    ReprContext<Nd, 1, MulRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for ()
+{
+    type Repr = NdDenseRepr<E>;
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
+impl<'l, 'r, E> RuntimeFor<AddRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for NdRuntime
 where
     &'l E: Add<&'r E, Output = E>,
 {
+    type Mk = Nd;
     type Ctx = ();
-    fn add_ctx(&self) -> Self::Ctx {}
+    fn ctx(&self) -> Self::Ctx {}
 }
-impl<'l, 'r, E> SubRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for NdRuntime
+impl<'l, 'r, E> RuntimeFor<SubRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for NdRuntime
 where
     &'l E: Sub<&'r E, Output = E>,
 {
+    type Mk = Nd;
     type Ctx = ();
-    fn sub_ctx(&self) -> Self::Ctx {}
+    fn ctx(&self) -> Self::Ctx {}
 }
 impl<'l, 'r, E: Scalar + Lapack + ConstZero>
-    MulRuntime<NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>> for NdRuntime
+    RuntimeFor<MulRepr<1, NdDenseViewRepr<'l, E>, NdDenseViewRepr<'r, E>>> for NdRuntime
 {
+    type Mk = Nd;
     type Ctx = ();
-    fn mul_ctx(&self) -> Self::Ctx {}
+    fn ctx(&self) -> Self::Ctx {}
 }
-impl<E: Neg<Output = E> + Clone> NegRuntime<NdDenseRepr<E>> for NdRuntime {
+impl<E: Neg<Output = E> + Clone> RuntimeFor<NegRepr<1, NdDenseRepr<E>>> for NdRuntime {
+    type Mk = Nd;
     type Ctx = ();
-    fn neg_ctx(&self) -> Self::Ctx {}
+    fn ctx(&self) -> Self::Ctx {}
 }
 
-impl<E: ScalarOperand + Mul<Output = E> + Clone> CommutativeScalarMulRuntime<NdDenseRepr<E>, E>
+impl<E: ScalarOperand + Mul<Output = E> + Clone> RuntimeFor<LeftScalarMulRepr<1, NdDenseRepr<E>, E>>
     for NdRuntime
 {
+    type Mk = Nd;
     type Ctx = ();
-    fn scalar_mul_ctx(&self) -> Self::Ctx {}
+    fn ctx(&self) -> Self::Ctx {}
 }
-impl<E: ScalarOperand + Div<Output = E> + Clone> CommutativeScalarDivRuntime<NdDenseRepr<E>, E>
+impl<E: ScalarOperand + Mul<Output = E> + Clone>
+    RuntimeFor<RightScalarMulRepr<1, NdDenseRepr<E>, E>> for NdRuntime
+{
+    type Mk = Nd;
+    type Ctx = ();
+    fn ctx(&self) -> Self::Ctx {}
+}
+
+impl<E: ScalarOperand + Div<Output = E> + Clone> RuntimeFor<LeftScalarDivRepr<1, NdDenseRepr<E>, E>>
     for NdRuntime
 {
+    type Mk = Nd;
     type Ctx = ();
-    fn scalar_div_ctx(&self) -> Self::Ctx {}
+    fn ctx(&self) -> Self::Ctx {}
+}
+impl<E: ScalarOperand + Div<Output = E> + Clone>
+    RuntimeFor<RightScalarDivRepr<1, NdDenseRepr<E>, E>> for NdRuntime
+{
+    type Mk = Nd;
+    type Ctx = ();
+    fn ctx(&self) -> Self::Ctx {}
 }
 
 #[cfg(test)]
@@ -263,7 +378,7 @@ mod tests {
     use num_traits::abs;
     use tensory_core::prelude::*;
 
-    use crate::{NdDenseTensor, NdDenseTensorExt, NdRuntime};
+    use crate::{Nd, NdDenseTensor, NdDenseTensorExt, NdRuntime};
 
     use tensory_basic::{
         id::{Id128, Prime},
@@ -298,7 +413,7 @@ mod tests {
 
         //println!("{:?}", tc.leg_alloc());
 
-        let tc = (&ta + &tb)?.with(())?;
+        let tc = (&ta + &tb)?.exec()?;
 
         // let (ta, _) = ta.into_raw();
         // let (tb, _) = tb.into_raw();
