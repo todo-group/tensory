@@ -192,6 +192,35 @@ impl<A: TensorTupleRepr<1>, B: TensorTupleRepr<1>, C: TensorTupleRepr<1>, M: Axi
     }
 }
 
+pub trait PackExt<const N: usize> {
+    type Repr: TensorTupleRepr<N>;
+    type Mapper: AxisMapper;
+    fn pack(self) -> TensorTuple<N, Self::Repr, Self::Mapper>;
+}
+impl<const N: usize, T: TensorTupleRepr<N>, M: AxisMapper> PackExt<N> for TensorTuple<N, T, M> {
+    type Repr = T;
+    type Mapper = M;
+    fn pack(self) -> TensorTuple<N, Self::Repr, Self::Mapper> {
+        self
+    }
+}
+impl<T1: TensorRepr, T2: TensorRepr, M: AxisMapper> PackExt<2> for (Tensor<T1, M>, Tensor<T2, M>) {
+    type Repr = (T1, T2);
+    type Mapper = M;
+    fn pack(self) -> TensorTuple<2, Self::Repr, Self::Mapper> {
+        TensorTuple::<2, _, _>::pack(self)
+    }
+}
+impl<T1: TensorRepr, T2: TensorRepr, T3: TensorRepr, M: AxisMapper> PackExt<3>
+    for (Tensor<T1, M>, Tensor<T2, M>, Tensor<T3, M>)
+{
+    type Repr = (T1, T2, T3);
+    type Mapper = M;
+    fn pack(self) -> TensorTuple<3, Self::Repr, Self::Mapper> {
+        TensorTuple::<3, _, _>::pack(self)
+    }
+}
+
 /// General utility trait for tensor operations.
 pub trait TensorExt: ToTensor {
     /// Replace a ID of a leg of the tensor.
