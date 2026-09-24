@@ -4,6 +4,7 @@ use alloc::string::String;
 use uuid::Uuid;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// A globally unique 128-bit axis identifier.
 pub struct Id128 {
     id: Uuid,
 }
@@ -19,6 +20,7 @@ impl Default for Id128 {
 }
 
 impl Id128 {
+    /// Creates a randomly generated identifier.
     pub fn new() -> Self {
         Self { id: Uuid::new_v4() }
     }
@@ -31,6 +33,7 @@ impl Id128 {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// A string-backed axis tag.
 pub struct Tag {
     raw: String,
 }
@@ -43,6 +46,7 @@ impl fmt::Display for Tag {
 //impl LegId for &'static str {}
 
 impl Tag {
+    /// Creates a tag from its owned string value.
     pub fn from_raw(raw: String) -> Self {
         Self { raw }
     }
@@ -55,11 +59,22 @@ impl Tag {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// An axis identifier together with a prime level.
 pub struct Prime<Id> {
     id: Id,
     plv: usize,
 }
+impl<Id> Default for Prime<Id>
+where
+    Id: Default,
+ {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<Id> Prime<Id> {
+    /// Creates an unprimed identifier from `Id::default()`.
     pub fn new() -> Self
     where
         Id: Default,
@@ -69,23 +84,29 @@ impl<Id> Prime<Id> {
             plv: 0,
         }
     }
+    /// Creates an unprimed identifier from an existing ID.
     pub fn from(id: Id) -> Self {
         Self { id, plv: 0 }
     }
+    /// Increases the prime level by one.
     pub fn prime(self) -> Self {
         self.prime_by(1)
     }
+    /// Decreases the prime level by one, saturating at zero.
     pub fn deprime(self) -> Self {
         self.deprime_by(1)
     }
+    /// Increases the prime level by `dplv`.
     pub fn prime_by(mut self, dplv: usize) -> Self {
         self.plv = self.plv.saturating_add(dplv);
         self
     }
+    /// Decreases the prime level by `dplv`, saturating at zero.
     pub fn deprime_by(mut self, dplv: usize) -> Self {
         self.plv = self.plv.saturating_sub(dplv);
         self
     }
+    /// Returns the current prime level.
     pub fn plv(&self) -> usize {
         self.plv
     }

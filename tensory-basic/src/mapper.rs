@@ -8,27 +8,35 @@
 //     unsafe { Vec::from_raw_parts(p as _, len, cap) }
 // }
 
-use core::{convert::Infallible, error::Error, fmt::Display};
+use core::convert::Infallible;
 use thiserror::Error;
 
 use alloc::vec::Vec;
 
 use tensory_core::{
     args::{LegMapArg, LegSetArg},
+    concept::refined::{RefinedExt, RefinedFrom},
     mapper::{
-        AxisMapper, BuildableMapper, ConnectAxisOrigin, ConnectMapper, DecompConf,
-        DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, GroupMapper, GroupedAxes,
-        GroupedMapper, OverlayAxisMapping, OverlayMapper, ReplaceMapper, SolveConf,
+        AxisMapper, BuildableMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper,
+        EquivGroupedAxes, GroupMapper, GroupedAxes, GroupedMapper, ReplaceMapper, SolveConf,
         SolveGroupedMapper, SortMapper, SynBuildableMapper, TranslateMapper,
     },
+    op::{AxisAllocation, AxisConnection, ConnectMapper, OverlayMapper},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// A mapper backed by a vector of unique axis identifiers.
 pub struct VecMapper<T>(Vec<T>);
 impl<T> VecMapper<T> {
+    /// Creates a mapper without validating uniqueness.
+    ///
+    /// # Safety
+    ///
+    /// `raw` must contain no duplicate axis identifiers.
     pub unsafe fn from_raw_unchecked(raw: Vec<T>) -> Self {
         VecMapper(raw)
     }
+    /// Creates a mapper after validating identifier uniqueness.
     pub fn from_raw(raw: Vec<T>) -> Result<Self, Vec<T>>
     where
         T: Eq,
@@ -61,6 +69,7 @@ fn check_unique<Id: Eq>(legs: &[Id]) -> bool {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("build error")]
+/// Error returned when a mapper cannot be built.
 pub struct BuildErr;
 
 impl<T: Eq, I: Iterator<Item = T>> BuildableMapper<I> for VecMapper<T> {
@@ -81,12 +90,13 @@ impl<T: Eq, I: Iterator<Item = [T; N]>, const N: usize> SynBuildableMapper<I> fo
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("overlay error")]
+/// Error returned when mappers cannot be overlaid.
 pub struct OverlayErr;
 
 unsafe impl<T: Eq> OverlayMapper<2> for VecMapper<T> {
     type Err = OverlayErr;
 
-    fn overlay([lhs, rhs]: [Self; 2]) -> Result<(Self, OverlayAxisMapping<2>), Self::Err> {
+    unsafe fn overlay([lhs, rhs]: [Self; 2]) -> Result<(Self, AxisAllocation<2>), Self::Err> {
         let len = lhs.naxes();
         let rhs_len = rhs.naxes();
         if len != rhs_len {
@@ -100,7 +110,7 @@ unsafe impl<T: Eq> OverlayMapper<2> for VecMapper<T> {
             .collect();
         let rhs_vec = rhs_vec.ok_or(OverlayErr)?;
 
-        OverlayAxisMapping::from_raw(len, [(0..len).collect(), rhs_vec])
+        AxisAllocation::from_raw((len, [(0..len).collect(), rhs_vec]))
             .map_err(|_| OverlayErr)
             .map(|m| (lhs, m))
     }
@@ -108,7 +118,7 @@ unsafe impl<T: Eq> OverlayMapper<2> for VecMapper<T> {
 
 unsafe impl<T: Eq> ConnectMapper<2> for VecMapper<T> {
     type Err = Infallible;
-    fn connect([lhs, rhs]: [Self; 2]) -> Result<(Self, ConnectAxisOrigin<2>), Self::Err> {
+    unsafe fn connect([lhs, rhs]: [Self; 2]) -> Result<(Self, AxisConnection<2>), Self::Err> {
         let lhs_len = lhs.naxes();
         let rhs_len = rhs.naxes();
 
@@ -155,7 +165,7 @@ unsafe impl<T: Eq> ConnectMapper<2> for VecMapper<T> {
         // }
 
         Ok((VecMapper(merge), unsafe {
-            ConnectAxisOrigin::from_raw_unchecked([lhs_len, rhs_len], pairs)
+            AxisConnection::from_raw_unchecked(([lhs_len, rhs_len], pairs))
         }))
     }
 }
@@ -208,6 +218,7 @@ where
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("equivalence group error")]
+/// Error returned when equivalent groups cannot be formed.
 pub struct EquivGroupErr;
 
 unsafe impl<'a, Id: Eq, K: Iterator<Item = (&'a Id, &'a Id)> + ExactSizeIterator>
@@ -270,6 +281,7 @@ where
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// Mapper produced by splitting two groups of axes.
 pub struct SplitMapper<Id> {
     first: Vec<Id>,
     second: Vec<Id>,
@@ -281,6 +293,7 @@ unsafe impl<Id: Eq> GroupedMapper<2> for SplitMapper<Id> {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("post split error")]
+/// Error returned when grouped axes cannot be decomposed.
 pub struct PostSplitErr;
 
 unsafe impl<const M: usize, Id: Eq> DecompGroupedMapper<2, M> for SplitMapper<Id> {
@@ -342,6 +355,7 @@ unsafe impl<const M: usize, Id: Eq + Clone> SolveGroupedMapper<2, M> for SplitMa
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("replace error")]
+/// Error returned when axis replacement fails.
 pub struct ReplaceErr;
 
 impl<
@@ -355,7 +369,7 @@ impl<
     fn replace(self, queue: LegMapArg<K, V>) -> Result<Self, Self::Err> {
         let vec = self.0;
         let (old_legs, new_legs) = queue.into_raw();
-        let mut rep_idx = old_legs
+        let rep_idx = old_legs
             .map(|old| vec.iter().position(|e| e == old))
             .collect::<Option<Vec<_>>>();
 
@@ -371,6 +385,7 @@ impl<
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
 #[error("translation error")]
+/// Error returned when axis translation fails.
 pub struct TranslateErr;
 
 impl<Id: Eq, C> SortMapper<C> for VecMapper<Id> {

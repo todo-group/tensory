@@ -1,4 +1,5 @@
 #![warn(missing_docs)]
+//! Basic axis identifiers and mapper implementations for tensory.
 #![no_std]
 extern crate alloc;
 #[cfg(test)]
