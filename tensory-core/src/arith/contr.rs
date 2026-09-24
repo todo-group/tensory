@@ -10,11 +10,11 @@ use crate::{
     tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
+/// Operation for a tensor contraction.
 pub struct MulOp;
 
-/// Lazy representation for a tensor contraction operation.
-pub type MulRepr<const N: usize, L: TensorTupleRepr<N>, R: TensorTupleRepr<N>> =
-    BinaryConnectRepr<N, L, R, MulOp>;
+/// Lazy representation for a tensor contraction operation using the `MulOp`.
+pub type MulRepr<const N: usize, L, R> = BinaryConnectRepr<N, L, R, MulOp>;
 
 // 9 combinations of Lhs/Rhs being owned/view/view_mut
 

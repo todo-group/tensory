@@ -1,7 +1,7 @@
 use crate::{
     concept::{
         container::{Raw, Resulting},
-        task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
+        task::{Context, IsRuntime, RuntimeErr, RuntimeFor},
     },
     mapper::AxisMapper,
     op::{EwiseExt, UnaryEwiseRepr},
@@ -29,10 +29,11 @@ pub unsafe trait NegCtx<A: TensorTupleRepr<1>> {
 
 */
 
+/// Operation for element-wise negation.
 pub struct NegOp;
 
-/// Lazy representation for a negation operation.
-pub type NegRepr<const N: usize, A: TensorTupleRepr<N>> = UnaryEwiseRepr<N, A, NegOp>;
+/// Lazy representation for a negation operation using the `NegOp`.
+pub type NegRepr<const N: usize, A> = UnaryEwiseRepr<N, A, NegOp>;
 
 macro_rules! impl_neg {
     ($a:ty $(,$life:lifetime)* ) => {

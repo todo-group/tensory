@@ -11,9 +11,10 @@ use crate::{
     tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
+/// Operation for element-wise addition.
 pub struct AddOp;
 
-/// Lazy representation for an addition operation.
+/// Lazy representation for an addition operation using the `AddOp`.
 pub type AddRepr<const N: usize, L, R> = BinaryEwiseRepr<N, L, R, AddOp>;
 
 // 9 combinations of Lhs/Rhs being owned/view/view_mut

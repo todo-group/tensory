@@ -11,9 +11,10 @@ use crate::{
     tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
+/// Operation for element-wise subtraction.
 pub struct SubOp;
 
-/// Lazy representation for a subtraction operation.
+/// Lazy representation for a subtraction operation using the `SubOp`.
 pub type SubRepr<const N: usize, L, R> = BinaryEwiseRepr<N, L, R, SubOp>;
 
 // 9 combinations of Lhs/Rhs being owned/view/view_mut

@@ -3,7 +3,7 @@ use core::{convert::Infallible, ops::Div};
 use crate::{
     concept::{
         container::{Raw, Resulting},
-        task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
+        task::{Context, IsRuntime, RuntimeErr, RuntimeFor},
     },
     mapper::AxisMapper,
     op::{EwiseExt, UnaryEwiseRepr},
@@ -31,16 +31,19 @@ pub unsafe trait LeftScalarDivCtx<A: TensorTupleRepr<1>, E> {
 }
 */
 
+/// Operation for element-wise left scalar division.
 pub struct LeftScalarDivOp<E>(E);
 
-pub type LeftScalarDivRepr<const N: usize, A: TensorTupleRepr<N>, E> =
-    UnaryEwiseRepr<N, A, LeftScalarDivOp<E>>;
+/// Lazy representation for a left scalar division operation using the `LeftScalarDivOp`.
+pub type LeftScalarDivRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, LeftScalarDivOp<E>>;
 
+/// Operation for element-wise right scalar division.
 pub struct RightScalarDivOp<E>(E);
 
-pub type RightScalarDivRepr<const N: usize, A: TensorTupleRepr<N>, E> =
-    UnaryEwiseRepr<N, A, RightScalarDivOp<E>>;
+/// Lazy representation for a right scalar division operation using the `RightScalarDivOp`.
+pub type RightScalarDivRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, RightScalarDivOp<E>>;
 
+/// Extension trait for creating scalar division tasks on tensors.
 pub trait TensorScalarDivExt<const N: usize, E>: ToTensorTuple<N> {
     /// Creates a left scalar division task.
     fn left_div(self, lhs: E) -> TensorTuple<N, LeftScalarDivRepr<N, Self::Repr, E>, Self::Mapper>

@@ -3,7 +3,7 @@ use core::{convert::Infallible, ops::Mul};
 use crate::{
     concept::{
         container::{Raw, Resulting},
-        task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
+        task::{Context, IsRuntime, RuntimeErr, RuntimeFor},
     },
     mapper::AxisMapper,
     op::{EwiseExt, UnaryEwiseRepr},
@@ -14,12 +14,16 @@ use crate::{
     },
 };
 
+/// Operation for element-wise left scalar multiplication.
 pub struct LeftScalarMulOp<E>(E);
 
+/// Lazy representation for a left scalar multiplication operation using the `LeftScalarMulOp`.
 pub type LeftScalarMulRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, LeftScalarMulOp<E>>;
 
+/// Operation for element-wise right scalar multiplication.
 pub struct RightScalarMulOp<E>(E);
 
+/// Lazy representation for a right scalar multiplication operation using the `RightScalarMulOp`.
 pub type RightScalarMulRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, RightScalarMulOp<E>>;
 
 /// Extension trait for left/right scalar multiplication operation on tensors.
