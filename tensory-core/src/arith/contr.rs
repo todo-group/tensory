@@ -3,63 +3,18 @@ use core::ops::Mul;
 use crate::{
     concept::{
         container::{Raw, Resulting},
-        task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
+        task::{Context, IsRuntime, RuntimeErr, RuntimeFor},
     },
-    mapper::{ConnectAxisOrigin, ConnectMapper},
+    op::{BinaryConnectRepr, ConnectExt, ConnectMapper},
     repr::TensorTupleRepr,
     tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
+pub struct MulOp;
+
 /// Lazy representation for a tensor contraction operation.
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct MulRepr<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> {
-    lhs: L,
-    rhs: R,
-    axis_origin: ConnectAxisOrigin<2>,
-}
-
-impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> MulRepr<L, R> {
-    /// Creates a representation after validating its axis origin.
-    pub fn from_raw(
-        lhs: L,
-        rhs: R,
-        axis_origin: ConnectAxisOrigin<2>,
-    ) -> Result<Self, (L, R, ConnectAxisOrigin<2>)> {
-        let [lhs_naxes] = lhs.naxes_array();
-        let [rhs_naxes] = rhs.naxes_array();
-        if axis_origin.in_lens() == [lhs_naxes, rhs_naxes] {
-            Ok(unsafe { Self::from_raw_unchecked(lhs, rhs, axis_origin) })
-        } else {
-            Err((lhs, rhs, axis_origin))
-        }
-    }
-
-    /// Creates a representation without checking its axis origin.
-    ///
-    /// # Safety
-    ///
-    /// `axis_origin` must describe every axis of both inputs.
-    pub unsafe fn from_raw_unchecked(lhs: L, rhs: R, axis_origin: ConnectAxisOrigin<2>) -> Self {
-        Self {
-            lhs,
-            rhs,
-            axis_origin,
-        }
-    }
-
-    /// Decomposes the representation into its inputs and axis origin.
-    pub fn into_raw(self) -> (L, R, ConnectAxisOrigin<2>) {
-        (self.lhs, self.rhs, self.axis_origin)
-    }
-}
-
-unsafe impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> TensorTupleRepr<1> for MulRepr<L, R> {
-    fn naxes_array(&self) -> [usize; 1] {
-        [self.axis_origin.len()]
-    }
-}
-
-impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> IsTask for MulRepr<L, R> {}
+pub type MulRepr<const N: usize, L: TensorTupleRepr<N>, R: TensorTupleRepr<N>> =
+    BinaryConnectRepr<N, L, R, MulOp>;
 
 // 9 combinations of Lhs/Rhs being owned/view/view_mut
 
@@ -72,25 +27,14 @@ macro_rules! impl_mul {
             $r: ToTensor<Mapper = M>,
         {
             type Output = Result<
-                Tensor<MulRepr<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr>, M>,
+                Tensor<MulRepr<1,<$l as ToTensor>::Repr, <$r as ToTensor>::Repr>, M>,
                 <M as ConnectMapper<2>>::Err,
             >;
 
             fn mul(self, rhs: $r) -> Self::Output {
-                let (lhs, [lhs_mapper]) = ToTensor::to_tensor(self).into_raw();
-                let (rhs, [rhs_mapper]) = ToTensor::to_tensor(rhs).into_raw();
-                ConnectMapper::<2>::connect([lhs_mapper, rhs_mapper]).map(
-                    |(res_mapper, axis_origin)| unsafe {
-                        Tensor::from_raw_unchecked(
-                            MulRepr {
-                                lhs,
-                                rhs,
-                                axis_origin,
-                            },
-                            [res_mapper],
-                        )
-                    },
-                )
+                let lhs = ToTensor::to_tensor(self);
+                let rhs = ToTensor::to_tensor(rhs);
+                lhs.connect(rhs, MulOp)
             }
         }
     };
@@ -121,7 +65,7 @@ macro_rules! impl_mul_runtime {
             $r: ToBoundTensorTuple<1, Mapper = M, Runtime = RT>,
             RT: RuntimeFor<
                 Tensor<
-                    MulRepr<
+                    MulRepr<1,
                         <$l as ToBoundTensorTuple<1>>::Repr,
                         <$r as ToBoundTensorTuple<1>>::Repr,
                     >,
@@ -131,6 +75,7 @@ macro_rules! impl_mul_runtime {
             <RT as RuntimeFor<
                 Tensor<
                     MulRepr<
+                        1,
                         <$l as ToBoundTensorTuple<1>>::Repr,
                         <$r as ToBoundTensorTuple<1>>::Repr,
                     >,
@@ -139,7 +84,7 @@ macro_rules! impl_mul_runtime {
             >>::Ctx: TensorTupleContext<
                 RT::Mk,
                 1,
-                MulRepr<
+                MulRepr<1,
                     <$l as ToBoundTensorTuple<1>>::Repr,
                     <$r as ToBoundTensorTuple<1>>::Repr,
                 >,
@@ -152,7 +97,7 @@ macro_rules! impl_mul_runtime {
                     <RT::Ctx as TensorTupleContext<
                         RT::Mk,
                         1,
-                        MulRepr<
+                        MulRepr<1,
                             <$l as ToBoundTensorTuple<1>>::Repr,
                             <$r as ToBoundTensorTuple<1>>::Repr,
                         >,

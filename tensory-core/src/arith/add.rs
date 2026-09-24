@@ -3,65 +3,20 @@ use core::ops::Add;
 use crate::{
     concept::{
         container::{Raw, Resulting},
-        task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
+        task::{Context, IsRuntime, RuntimeErr, RuntimeFor},
     },
-    mapper::{OverlayAxisMapping, OverlayMapper},
-    repr::{TensorRepr, TensorTupleRepr},
-    tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple},
+    op::OverlayMapper,
+    op::{BinaryEwiseRepr, EwiseExt},
+    repr::TensorTupleRepr,
+    tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
+pub struct AddOp;
+
 /// Lazy representation for an addition operation.
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct AddRepr<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> {
-    lhs: L,
-    rhs: R,
-    axis_mapping: OverlayAxisMapping<2>,
-}
-
-impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> AddRepr<L, R> {
-    /// Creates a representation after validating its axis mapping.
-    pub fn from_raw(
-        lhs: L,
-        rhs: R,
-        axis_mapping: OverlayAxisMapping<2>,
-    ) -> Result<Self, (L, R, OverlayAxisMapping<2>)> {
-        if axis_mapping.naxes() == lhs.naxes() && axis_mapping.naxes() == rhs.naxes() {
-            Ok(unsafe { Self::from_raw_unchecked(lhs, rhs, axis_mapping) })
-        } else {
-            Err((lhs, rhs, axis_mapping))
-        }
-    }
-
-    /// Creates a representation without checking its axis mapping.
-    ///
-    /// # Safety
-    ///
-    /// `axis_mapping` must describe the axes of both inputs.
-    pub unsafe fn from_raw_unchecked(lhs: L, rhs: R, axis_mapping: OverlayAxisMapping<2>) -> Self {
-        Self {
-            lhs,
-            rhs,
-            axis_mapping,
-        }
-    }
-
-    /// Decomposes the representation into its inputs and axis mapping.
-    pub fn into_raw(self) -> (L, R, OverlayAxisMapping<2>) {
-        (self.lhs, self.rhs, self.axis_mapping)
-    }
-}
-
-unsafe impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> TensorTupleRepr<1> for AddRepr<L, R> {
-    fn naxes_array(&self) -> [usize; 1] {
-        [self.axis_mapping.naxes()]
-    }
-}
-
-impl<L: TensorTupleRepr<1>, R: TensorTupleRepr<1>> IsTask for AddRepr<L, R> {}
+pub type AddRepr<const N: usize, L, R> = BinaryEwiseRepr<N, L, R, AddOp>;
 
 // 9 combinations of Lhs/Rhs being owned/view/view_mut
-
-use crate::tensor::ToTensor;
 
 macro_rules! impl_add {
     ($l:ty,$r:ty $(,$life:lifetime)* ) => {
@@ -71,24 +26,13 @@ macro_rules! impl_add {
             $r: ToTensor<Mapper = M>,
         {
             type Output = Result<
-                Tensor<AddRepr<<$l as ToTensor>::Repr, <$r as ToTensor>::Repr>, M>,
+                Tensor<AddRepr<1, <$l as ToTensor>::Repr, <$r as ToTensor>::Repr>, M>,
                 <M as OverlayMapper<2>>::Err,
             >;
             fn add(self, rhs: $r) -> Self::Output {
-                let (lhs, [lhs_mapper]) = ToTensor::to_tensor(self).into_raw();
-                let (rhs, [rhs_mapper]) = ToTensor::to_tensor(rhs).into_raw();
-                OverlayMapper::<2>::overlay([lhs_mapper, rhs_mapper]).map(
-                    |(res_mapper, axis_mapping)| unsafe {
-                        Tensor::from_raw_unchecked(
-                            AddRepr {
-                                lhs,
-                                rhs,
-                                axis_mapping,
-                            },
-                            [res_mapper],
-                        )
-                    },
-                )
+                let lhs = ToTensor::to_tensor(self);
+                let rhs = ToTensor::to_tensor(rhs);
+                lhs.ewise2(rhs, AddOp)
             }
         }
     };
@@ -113,17 +57,17 @@ macro_rules! impl_add_runtime {
         where
             $l: ToBoundTensorTuple<1, Mapper = M, Runtime = RT>,
             $r: ToBoundTensorTuple<1, Mapper = M, Runtime = RT>,
-            RT: RuntimeFor<Tensor<AddRepr<<$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M>>,
-            <RT as RuntimeFor<Tensor<AddRepr<<$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M>>>::Ctx: TensorTupleContext<
+            RT: RuntimeFor<Tensor<AddRepr<1,<$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M>>,
+            <RT as RuntimeFor<Tensor<AddRepr<1,<$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M>>>::Ctx: TensorTupleContext<
                 RT::Mk,
                 1,
-                AddRepr<<$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M,
+                AddRepr<1, <$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M,
                 CType = Resulting<Raw,Err>
             >
         {
             type Output = Result<
                 BoundTensor<
-                    <RT::Ctx as TensorTupleContext<RT::Mk, 1, AddRepr<<$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M>>::Repr,
+                    <RT::Ctx as TensorTupleContext<RT::Mk, 1, AddRepr<1, <$l as ToBoundTensorTuple<1>>::Repr, <$r as ToBoundTensorTuple<1>>::Repr>, M>>::Repr,
                     M,
                     RT,
                 >,
@@ -139,7 +83,7 @@ macro_rules! impl_add_runtime {
                 if lhs_rt != rhs_rt {
                     return Err(RuntimeErr::Runtime);
                 }
-                let rt= lhs_rt;
+                let rt = lhs_rt;
                 let task = (lhs + rhs).map_err(RuntimeErr::Defer)?;
                 let res = rt.ctx().execute(task).map_err(RuntimeErr::Execute)?;
 

@@ -4,6 +4,7 @@ use crate::{
         task::{Context, IsRuntime, IsTask, RuntimeErr, RuntimeFor},
     },
     mapper::AxisMapper,
+    op::{EwiseExt, UnaryEwiseRepr},
     repr::TensorTupleRepr,
     tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
@@ -28,40 +29,10 @@ pub unsafe trait NegCtx<A: TensorTupleRepr<1>> {
 
 */
 
+pub struct NegOp;
+
 /// Lazy representation for a negation operation.
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct NegRepr<A: TensorTupleRepr<1>> {
-    a: A,
-}
-
-impl<A: TensorTupleRepr<1>> NegRepr<A> {
-    /// Creates a representation for an input tensor.
-    pub fn from_raw(a: A) -> Self {
-        Self { a }
-    }
-
-    /// Creates a representation without checking its input.
-    ///
-    /// # Safety
-    ///
-    /// `a` must be a valid tensor representation.
-    pub unsafe fn from_raw_unchecked(a: A) -> Self {
-        Self { a }
-    }
-
-    /// Decomposes the representation into its input.
-    pub fn into_raw(self) -> A {
-        self.a
-    }
-}
-
-unsafe impl<A: TensorTupleRepr<1>> TensorTupleRepr<1> for NegRepr<A> {
-    fn naxes_array(&self) -> [usize; 1] {
-        self.a.naxes_array()
-    }
-}
-
-impl<A: TensorTupleRepr<1>> IsTask for NegRepr<A> {}
+pub type NegRepr<const N: usize, A: TensorTupleRepr<N>> = UnaryEwiseRepr<N, A, NegOp>;
 
 macro_rules! impl_neg {
     ($a:ty $(,$life:lifetime)* ) => {
@@ -69,10 +40,10 @@ macro_rules! impl_neg {
         where
             $a: ToTensor<Mapper = M>,
         {
-            type Output = Tensor<NegRepr<<$a as ToTensor>::Repr>, M>;
+            type Output = Tensor<NegRepr<1, <$a as ToTensor>::Repr>, M>;
             fn neg(self) -> Self::Output {
-                let (a, [mapper]) = ToTensor::to_tensor(self).into_raw();
-                unsafe { Tensor::from_raw_unchecked(NegRepr::from_raw(a), [mapper]) }
+                let a = ToTensor::to_tensor(self);
+                a.ewise1(NegOp)
             }
         }
     };
@@ -89,14 +60,14 @@ macro_rules! impl_neg_runtime {
         where
             $a: ToBoundTensorTuple<1, Mapper = M, Runtime = RT>,
             RT: RuntimeFor<
-                Tensor<NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>, M>,
+                Tensor<NegRepr<1,<$a as ToBoundTensorTuple<1>>::Repr>, M>,
             >,
             <RT as RuntimeFor<
-                Tensor<NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>, M>,
+                Tensor<NegRepr<1,<$a as ToBoundTensorTuple<1>>::Repr>, M>,
             >>::Ctx: TensorTupleContext<
                 RT::Mk,
                 1,
-                NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>,
+                NegRepr<1,<$a as ToBoundTensorTuple<1>>::Repr>,
                 M,
                 CType = Resulting<Raw, Err>,
             >,
@@ -107,7 +78,7 @@ macro_rules! impl_neg_runtime {
                     <RT::Ctx as TensorTupleContext<
                         RT::Mk,
                         1,
-                        NegRepr<<$a as ToBoundTensorTuple<1>>::Repr>,
+                        NegRepr<1,<$a as ToBoundTensorTuple<1>>::Repr>,
                         M,
                     >>::Repr,
                     M,
