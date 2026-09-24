@@ -15,13 +15,13 @@ use crate::{
 };
 
 /// Operation for element-wise left scalar multiplication.
-pub struct LeftScalarMulOp<E>(E);
+pub struct LeftScalarMulOp<E>(pub E);
 
 /// Lazy representation for a left scalar multiplication operation using the `LeftScalarMulOp`.
 pub type LeftScalarMulRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, LeftScalarMulOp<E>>;
 
 /// Operation for element-wise right scalar multiplication.
-pub struct RightScalarMulOp<E>(E);
+pub struct RightScalarMulOp<E>(pub E);
 
 /// Lazy representation for a right scalar multiplication operation using the `RightScalarMulOp`.
 pub type RightScalarMulRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, RightScalarMulOp<E>>;

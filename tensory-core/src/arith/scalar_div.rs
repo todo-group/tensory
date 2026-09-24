@@ -32,13 +32,13 @@ pub unsafe trait LeftScalarDivCtx<A: TensorTupleRepr<1>, E> {
 */
 
 /// Operation for element-wise left scalar division.
-pub struct LeftScalarDivOp<E>(E);
+pub struct LeftScalarDivOp<E>(pub E);
 
 /// Lazy representation for a left scalar division operation using the `LeftScalarDivOp`.
 pub type LeftScalarDivRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, LeftScalarDivOp<E>>;
 
 /// Operation for element-wise right scalar division.
-pub struct RightScalarDivOp<E>(E);
+pub struct RightScalarDivOp<E>(pub E);
 
 /// Lazy representation for a right scalar division operation using the `RightScalarDivOp`.
 pub type RightScalarDivRepr<const N: usize, A, E> = UnaryEwiseRepr<N, A, RightScalarDivOp<E>>;
