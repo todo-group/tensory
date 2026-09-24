@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 use crate::{
     args::LegMapArg,
     mapper::{AxisMapper, SortMapper},
-    repr::TensorRepr,
+    repr::TensorTupleRepr,
     tensor::Tensor,
 };
 
@@ -60,17 +60,30 @@ use crate::{
 // }
 
 /// Tensor representation providing immutable element access, WITHOUT checking the number of indices.
-pub trait ElemGetReprImpl: TensorRepr {
+pub trait ElemGetReprImpl: TensorTupleRepr<1> {
+    /// Index type accepted by the representation.
     type Index;
+    /// Element type stored by the representation.
     type E;
+    /// Error returned by element access.
     type Err;
     /// Returns the immutable reference to the element at the given indices, WITHOUT checking the number of indices.
+    ///
+    /// # Safety
+    ///
+    /// The caller must provide exactly the number of indices required by the
+    /// representation and each index must be valid for its corresponding axis.
     unsafe fn get_unchecked(&self, indices: Vec<Self::Index>) -> Result<&Self::E, Self::Err>;
 }
 
 /// Tensor representation providing mutable element access, WITHOUT checking the number of indices.
 pub trait ElemGetMutReprImpl: ElemGetReprImpl {
     /// Returns the mutable reference to the element at the given indices, WITHOUT checking the number of indices.
+    ///
+    /// # Safety
+    ///
+    /// The caller must provide exactly the number of indices required by the
+    /// representation and each index must be valid for its corresponding axis.
     unsafe fn get_mut_unchecked(
         &mut self,
         indices: Vec<Self::Index>,
@@ -81,6 +94,7 @@ pub trait ElemGetMutReprImpl: ElemGetReprImpl {
 ///
 /// The blanket implementation checks the number of indices.
 pub trait ElemGetRepr: ElemGetReprImpl {
+    /// Returns an immutable element reference after validating the index shape.
     fn get(&self, indices: Vec<Self::Index>) -> Result<&Self::E, Self::Err>;
 }
 impl<T: ElemGetReprImpl> ElemGetRepr for T {
@@ -97,6 +111,7 @@ impl<T: ElemGetReprImpl> ElemGetRepr for T {
 ///
 /// The blanket implementation checks the number of indices.
 pub trait ElemGetMutRepr: ElemGetMutReprImpl {
+    /// Returns a mutable element reference after validating the index shape.
     fn get_mut(&mut self, indices: Vec<Self::Index>) -> Result<&mut Self::E, Self::Err>;
 }
 impl<T: ElemGetMutReprImpl> ElemGetMutRepr for T {
@@ -128,6 +143,7 @@ impl<T: ElemGetMutReprImpl> ElemGetMutRepr for T {
 // }
 
 impl<A: ElemGetRepr, B: AxisMapper> Tensor<A, B> {
+    /// Returns an element selected by mapper IDs and representation indices.
     pub fn get<
         'a,
         K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
@@ -145,6 +161,7 @@ impl<A: ElemGetRepr, B: AxisMapper> Tensor<A, B> {
     }
 }
 impl<A: ElemGetMutRepr, B: AxisMapper> Tensor<A, B> {
+    /// Returns a mutable element selected by mapper IDs and representation indices.
     pub fn get_mut<
         'a,
         K: ExactSizeIterator + Iterator<Item = &'a B::Id>,
