@@ -1,85 +1,73 @@
 use core::convert::Infallible;
 
 use tensory_core::{
-    bound_tensor::{Runtime, RuntimeErr, ToBoundTensor},
-    repr::TensorRepr,
-    tensor::{TensorTask, ToTensor},
+    concept::task::{Context, IsTask, RuntimeErr, RuntimeFor},
+    repr::TensorTupleRepr,
+    tensor::{ToBoundTensorTuple, ToTensor},
 };
 
-/// Raw context of norm operation.
-pub trait NormCtx<A: TensorRepr> {
-    /// The type of the result tensor representation.
-    type Res;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs norm operation on the tensor `a`.
-    fn norm(self, a: A) -> Result<Self::Res, Self::Err>;
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorNorm<A: TensorRepr> {
+/// Lazy representation of a norm operation.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct NormRepr<A: TensorTupleRepr<1>> {
     a: A,
 }
-impl<A: TensorRepr> TensorNorm<A> {
+
+impl<A: TensorTupleRepr<1>> IsTask for NormRepr<A> {}
+
+impl<A: TensorTupleRepr<1>> NormRepr<A> {
+    /// Creates a norm representation.
     pub fn from_raw(a: A) -> Self {
         Self { a }
     }
-}
 
-impl<A: TensorRepr, C: NormCtx<A>> TensorTask<C> for TensorNorm<A> {
-    type Output = Result<C::Res, C::Err>;
-
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
-        ctx.norm(a)
+    /// Decomposes the representation into its input.
+    pub fn into_raw(self) -> A {
+        self.a
     }
 }
-pub trait NormRuntime<A: TensorRepr>: Runtime {
-    type Ctx: NormCtx<A>;
-    fn norm_ctx(&self) -> Self::Ctx;
-}
 
+/// Lazy norm construction for ordinary tensors.
 pub trait TensorNormExt: ToTensor {
-    fn norm(self) -> TensorNorm<Self::Repr>;
+    /// Builds a lazy norm task.
+    fn norm(self) -> NormRepr<Self::Repr>;
 }
 
 impl<T: ToTensor> TensorNormExt for T {
-    // norm
-    fn norm(self) -> TensorNorm<Self::Repr> {
-        let (a, _) = self.to_tensor().into_raw();
-        TensorNorm::from_raw(a)
+    fn norm(self) -> NormRepr<Self::Repr> {
+        let (repr, _) = self.to_tensor().into_raw();
+        NormRepr::from_raw(repr)
     }
 }
 
-pub trait BoundTensorNormExt: ToBoundTensor {
-    fn norm(
-        self,
-    ) -> Result<
-        <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Res,
-        RuntimeErr<
-            Infallible,
-            <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Err,
-        >,
-    >
+/// Runtime-bound norm construction and execution.
+pub trait BoundTensorNormExt: ToBoundTensorTuple<1> {
+    /// Builds and executes a norm task.
+    fn norm<R, E>(self) -> Result<R, RuntimeErr<Infallible, E>>
     where
-        Self::Runtime: NormRuntime<Self::Repr>;
+        Self::Runtime: RuntimeFor<NormRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<NormRepr<Self::Repr>>>::Ctx: Context<
+            <Self::Runtime as RuntimeFor<NormRepr<Self::Repr>>>::Mk,
+            NormRepr<Self::Repr>,
+            Output = Result<R, E>,
+        >;
 }
 
-impl<T: ToBoundTensor> BoundTensorNormExt for T {
-    fn norm(
-        self,
-    ) -> Result<
-        <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Res,
-        RuntimeErr<
-            Infallible,
-            <<Self::Runtime as NormRuntime<Self::Repr>>::Ctx as NormCtx<Self::Repr>>::Err,
-        >,
-    >
+impl<T: ToBoundTensorTuple<1>> BoundTensorNormExt for T {
+    fn norm<R, E>(self) -> Result<R, RuntimeErr<Infallible, E>>
     where
-        T::Runtime: NormRuntime<Self::Repr>,
+        Self::Runtime: RuntimeFor<NormRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<NormRepr<Self::Repr>>>::Ctx: Context<
+            <Self::Runtime as RuntimeFor<NormRepr<Self::Repr>>>::Mk,
+            NormRepr<Self::Repr>,
+            Output = Result<R, E>,
+        >,
     {
-        let (a, rt) = self.to_bound_tensor().into_raw();
-        a.norm().with(rt.norm_ctx()).map_err(RuntimeErr::Ctx)
+        let (tensor, runtime) = self.to_bound_tensor_tuple().into_raw();
+        let (repr, _) = tensor.into_raw();
+        let result = runtime
+            .ctx()
+            .execute(NormRepr::from_raw(repr))
+            .map_err(RuntimeErr::Execute)?;
+        Ok(result)
     }
 }

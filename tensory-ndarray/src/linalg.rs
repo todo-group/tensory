@@ -5,202 +5,161 @@ use alloc::vec::Vec;
 use ndarray::{ArrayBase, IxDyn, OwnedRepr};
 use ndarray_linalg::{Lapack, Norm, Scalar, from_diag};
 use num_traits::ConstZero;
-use tensory_core::mapper::{EquivGroupedAxes, GroupedAxes};
+use tensory_core::{
+    concept::{
+        container::{Raw, Resulting},
+        task::{Context, RuntimeFor},
+    },
+    mapper::{EquivGroupedAxes, GroupedAxes},
+    repr::ReprContext,
+};
 use tensory_linalg::{
-    conj::ConjCtx,
-    eig::EigCtxImpl,
-    exp::ExpCtxImpl,
-    norm::{NormCtx, NormRuntime},
-    pow::PowCtxImpl,
-    qr::QrCtxImpl,
-    solve_eig::SolveEigCtxImpl,
-    svd::{SvdCtxImpl, SvdWithOptionRuntime},
+    conj::ConjRepr,
+    eig::EigRepr,
+    exp::ExpRepr,
+    norm::NormRepr,
+    pow::PowRepr,
+    qr::QrRepr,
+    solve_eig::SolveEigRepr,
+    svd::SvdRepr,
 };
 
 use crate::{
-    NdDenseRepr, NdDenseViewRepr, NdRuntime,
+    Nd, NdDenseRepr, NdDenseViewRepr, NdRuntime,
     cut_filter::{CutFilter, SingularFilter},
     tenalg::{conj, diag_map, error::TenalgErr, into_eig, into_eigh, into_qr, into_svddc},
 };
 
-pub struct Filter<T>(T);
-
-unsafe impl<
+fn execute_svd<
     'a,
     E: Scalar + Lapack,
     F: SingularFilter<OwnedRepr<E>, OwnedRepr<E::Real>, OwnedRepr<E>>,
-> SvdCtxImpl<NdDenseViewRepr<'a, E>> for Filter<F>
+>(
+    a: NdDenseViewRepr<'a, E>,
+    axes_split: GroupedAxes<2>,
+    filter: F,
+) -> Result<(NdDenseRepr<E>, NdDenseRepr<E::Real>, NdDenseRepr<E>), TenalgErr>
 where
     E::Real: ConstZero,
 {
-    type U = NdDenseRepr<E>;
-    type S = NdDenseRepr<E::Real>;
-    type V = NdDenseRepr<E>;
-    type Err = TenalgErr;
-
-    unsafe fn svd_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        axes_split: GroupedAxes<2>,
-    ) -> Result<(Self::U, Self::S, Self::V), Self::Err> {
-        let (_, [u_set, v_set]) = axes_split.into_raw();
-        // U 0 uset
-        // S 0 1
-        // V 1 vset
-
-        let a_raw = a.data;
-
-        let u_set_len = u_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            u_set.iter().cloned().chain(v_set.iter().cloned()).collect();
-
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
-
-        let (u, s, v) = into_svddc(a_rot, u_set_len, self.0)?;
-
-        let u = u.permuted_axes(
-            core::iter::once(u_set_len)
-                .chain(0..u_set_len)
-                .collect::<Vec<_>>(),
-        );
-
-        let s: ArrayBase<OwnedRepr<<E as Scalar>::Real>, ndarray::Dim<[usize; 1]>> = s;
-
-        let s_ten = from_diag(&s.to_vec()).into_dimensionality::<IxDyn>()?;
-
-        Ok((
-            NdDenseRepr { data: u },
-            NdDenseRepr { data: s_ten },
-            NdDenseRepr { data: v },
-        ))
-    }
+    let (_, [u_set, v_set]) = axes_split.into_raw();
+    let u_set_len = u_set.len();
+    let a_idxv_ordered: Vec<usize> = u_set.iter().cloned().chain(v_set.iter().cloned()).collect();
+    let a_rot = a.data.permuted_axes(a_idxv_ordered);
+    let (u, s, v) = into_svddc(a_rot, u_set_len, filter)?;
+    let u = u.permuted_axes(
+        core::iter::once(u_set_len)
+            .chain(0..u_set_len)
+            .collect::<Vec<_>>(),
+    );
+    let s: ArrayBase<OwnedRepr<E::Real>, ndarray::Dim<[usize; 1]>> = s;
+    let s_ten = from_diag(&s.to_vec()).into_dimensionality::<IxDyn>()?;
+    Ok((
+        NdDenseRepr { data: u },
+        NdDenseRepr { data: s_ten },
+        NdDenseRepr { data: v },
+    ))
 }
 
-unsafe impl<'a, E: Scalar + Lapack> SvdCtxImpl<NdDenseViewRepr<'a, E>> for ()
+impl<
+        'a,
+        E: Scalar + Lapack,
+        F: SingularFilter<OwnedRepr<E>, OwnedRepr<E::Real>, OwnedRepr<E>>,
+    > Context<Nd, SvdRepr<NdDenseViewRepr<'a, E>, F>> for ()
 where
     E::Real: ConstZero,
 {
-    type U = NdDenseRepr<E>;
-    type S = NdDenseRepr<E::Real>;
-    type V = NdDenseRepr<E>;
-    type Err = TenalgErr;
+    type Output = Result<(NdDenseRepr<E>, NdDenseRepr<E::Real>, NdDenseRepr<E>), TenalgErr>;
 
-    unsafe fn svd_unchecked(
+    fn execute(
         self,
-        a: NdDenseViewRepr<'a, E>,
-        axes_split: GroupedAxes<2>,
-    ) -> Result<(Self::U, Self::S, Self::V), Self::Err> {
-        unsafe { Filter(()).svd_unchecked(a, axes_split) }
+        task: SvdRepr<NdDenseViewRepr<'a, E>, F>,
+    ) -> Self::Output {
+        let (a, axes_split, filter) = task.into_raw();
+        execute_svd(a, axes_split, filter)
     }
 }
-unsafe impl<'a, E: Scalar + Lapack> SvdCtxImpl<NdDenseViewRepr<'a, E>> for CutFilter<E::Real>
+
+unsafe impl<
+        'a,
+        E: Scalar + Lapack,
+        F: SingularFilter<OwnedRepr<E>, OwnedRepr<E::Real>, OwnedRepr<E>>,
+    > ReprContext<Nd, 3, SvdRepr<NdDenseViewRepr<'a, E>, F>> for ()
 where
     E::Real: ConstZero,
 {
-    type U = NdDenseRepr<E>;
-    type S = NdDenseRepr<E::Real>;
-    type V = NdDenseRepr<E>;
-    type Err = TenalgErr;
-
-    unsafe fn svd_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        axes_split: GroupedAxes<2>,
-    ) -> Result<(Self::U, Self::S, Self::V), Self::Err> {
-        unsafe { Filter(self).svd_unchecked(a, axes_split) }
-    }
+    type Repr = (NdDenseRepr<E>, NdDenseRepr<E::Real>, NdDenseRepr<E>);
+    type CType = Resulting<Raw, TenalgErr>;
 }
 
-impl<'a, E: Scalar + Lapack, C: SingularFilter<OwnedRepr<E>, OwnedRepr<E::Real>, OwnedRepr<E>>>
-    SvdWithOptionRuntime<NdDenseViewRepr<'a, E>, C> for NdRuntime
+impl<
+        'a,
+        E: Scalar + Lapack,
+        F: SingularFilter<OwnedRepr<E>, OwnedRepr<E::Real>, OwnedRepr<E>>,
+    > RuntimeFor<SvdRepr<NdDenseViewRepr<'a, E>, F>> for NdRuntime
 where
     E::Real: ConstZero,
 {
-    type Ctx = Filter<C>;
+    type Mk = Nd;
+    type Ctx = ();
 
-    fn svd_ctx(&self, opt: C) -> Self::Ctx {
-        Filter(opt)
-    }
+    fn ctx(&self) -> Self::Ctx {}
 }
 
-unsafe impl<'a, E: Scalar + Lapack> QrCtxImpl<NdDenseViewRepr<'a, E>> for () {
-    type Q = NdDenseRepr<E>;
-    type R = NdDenseRepr<E>;
-    type Err = TenalgErr;
+impl<'a, E: Scalar + Lapack> Context<Nd, QrRepr<NdDenseViewRepr<'a, E>>> for () {
+    type Output = Result<(NdDenseRepr<E>, NdDenseRepr<E>), TenalgErr>;
 
-    unsafe fn qr_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        axes_split: GroupedAxes<2>,
-    ) -> Result<(Self::Q, Self::R), Self::Err> {
+    fn execute(self, task: QrRepr<NdDenseViewRepr<'a, E>>) -> Self::Output {
+        let (a, axes_split) = task.into_raw();
         let (_, [q_set, r_set]) = axes_split.into_raw();
-        // U 0 uset
-        // S 0 1
-        // V 1 vset
-
-        let a_raw = a.data;
-
         let q_set_len = q_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            q_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
-
+        let a_idxv_ordered: Vec<usize> = q_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let (q, r) = into_qr(a_rot, q_set_len)?;
-
         let q = q.permuted_axes(
             core::iter::once(q_set_len)
                 .chain(0..q_set_len)
                 .collect::<Vec<_>>(),
         );
-
         Ok((NdDenseRepr { data: q }, NdDenseRepr { data: r }))
     }
+}
+
+unsafe impl<'a, E: Scalar + Lapack> ReprContext<Nd, 2, QrRepr<NdDenseViewRepr<'a, E>>> for () {
+    type Repr = (NdDenseRepr<E>, NdDenseRepr<E>);
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
+impl<'a, E: Scalar + Lapack> RuntimeFor<QrRepr<NdDenseViewRepr<'a, E>>> for NdRuntime {
+    type Mk = Nd;
+    type Ctx = ();
+
+    fn ctx(&self) -> Self::Ctx {}
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Hermite;
 
-unsafe impl<'a, E: Scalar + Lapack> EigCtxImpl<NdDenseViewRepr<'a, E>> for Hermite {
-    type V = NdDenseRepr<E>;
-    type D = NdDenseRepr<E::Real>;
-    type VC = NdDenseRepr<E>;
+impl<'a, E: Scalar + Lapack> Context<Nd, EigRepr<NdDenseViewRepr<'a, E>>> for Hermite {
+    type Output = Result<
+        (NdDenseRepr<E>, NdDenseRepr<E::Real>, NdDenseRepr<E>),
+        TenalgErr,
+    >;
 
-    type Err = TenalgErr;
-
-    unsafe fn eig_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        axes_split: tensory_core::mapper::EquivGroupedAxes<2>,
-    ) -> Result<(Self::V, Self::D, Self::VC), Self::Err> {
+    fn execute(self, task: EigRepr<NdDenseViewRepr<'a, E>>) -> Self::Output {
+        let (a, axes_split) = task.into_raw();
         let (_, [l_set, r_set]) = axes_split.into_raw();
-        // VC 0 uset
-        // D  0 1
-        // V  1 vset
-
-        let a_raw = a.data;
-
         let l_set_len = l_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
-
+        let a_idxv_ordered: Vec<usize> = l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let (vc, d) = into_eigh(a_rot, l_set_len)?;
-
         let d_ten = from_diag(&d.to_vec()).into_dimensionality::<IxDyn>()?;
-
         let vc = vc.permuted_axes(
             core::iter::once(l_set_len)
                 .chain(0..l_set_len)
                 .collect::<Vec<_>>(),
         );
-
         let v = vc.map(|e| e.conj());
-
         Ok((
             NdDenseRepr { data: vc },
             NdDenseRepr { data: d_ten },
@@ -209,101 +168,124 @@ unsafe impl<'a, E: Scalar + Lapack> EigCtxImpl<NdDenseViewRepr<'a, E>> for Hermi
     }
 }
 
-unsafe impl<'a, E: Scalar + Lapack> SolveEigCtxImpl<NdDenseViewRepr<'a, E>> for () {
-    type D = NdDenseRepr<E::Complex>;
-    type V = NdDenseRepr<E::Complex>;
+unsafe impl<'a, E: Scalar + Lapack> ReprContext<Nd, 3, EigRepr<NdDenseViewRepr<'a, E>>>
+    for Hermite
+{
+    type Repr = (NdDenseRepr<E>, NdDenseRepr<E::Real>, NdDenseRepr<E>);
+    type CType = Resulting<Raw, TenalgErr>;
+}
 
-    type Err = TenalgErr;
+impl<'a, E: Scalar + Lapack> RuntimeFor<EigRepr<NdDenseViewRepr<'a, E>>> for NdRuntime {
+    type Mk = Nd;
+    type Ctx = Hermite;
 
-    unsafe fn solve_eig_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        axes_split: tensory_core::mapper::EquivGroupedAxes<2>,
-    ) -> Result<(Self::D, Self::V), Self::Err> {
+    fn ctx(&self) -> Self::Ctx {
+        Hermite
+    }
+}
+
+impl<'a, E: Scalar + Lapack> Context<Nd, SolveEigRepr<NdDenseViewRepr<'a, E>>> for () {
+    type Output = Result<
+        (NdDenseRepr<E::Complex>, NdDenseRepr<E::Complex>),
+        TenalgErr,
+    >;
+
+    fn execute(self, task: SolveEigRepr<NdDenseViewRepr<'a, E>>) -> Self::Output {
+        let (a, axes_split) = task.into_raw();
         let (_, [l_set, r_set]) = axes_split.into_raw();
-        // D  0 1
-        // V  1 vset
-
-        let a_raw = a.data;
-
         let l_set_len = l_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
-
+        let a_idxv_ordered: Vec<usize> = l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let (v, d) = into_eig(a_rot, l_set_len)?;
-
         let d_ten = from_diag(&d.to_vec()).into_dimensionality::<IxDyn>()?;
-
         let v = v.permuted_axes(
             core::iter::once(l_set_len)
                 .chain(0..l_set_len)
                 .collect::<Vec<_>>(),
         );
-
-        Ok((NdDenseRepr { data: d_ten }, NdDenseRepr { data: v }))
+        Ok((NdDenseRepr { data: v }, NdDenseRepr { data: d_ten }))
     }
 }
 
-impl<E: Scalar + Lapack> NormCtx<NdDenseViewRepr<'_, E>> for () {
-    type Res = E::Real;
-    type Err = Infallible;
-
-    fn norm(self, a: NdDenseViewRepr<'_, E>) -> core::result::Result<Self::Res, Self::Err> {
-        Ok(a.data.norm_l2())
-    }
+unsafe impl<'a, E: Scalar + Lapack>
+    ReprContext<Nd, 2, SolveEigRepr<NdDenseViewRepr<'a, E>>> for ()
+{
+    type Repr = (NdDenseRepr<E::Complex>, NdDenseRepr<E::Complex>);
+    type CType = Resulting<Raw, TenalgErr>;
 }
-impl<'a, E: Scalar + Lapack> NormRuntime<NdDenseViewRepr<'a, E>> for NdRuntime {
+
+impl<'a, E: Scalar + Lapack> RuntimeFor<SolveEigRepr<NdDenseViewRepr<'a, E>>> for NdRuntime {
+    type Mk = Nd;
     type Ctx = ();
 
-    fn norm_ctx(&self) -> Self::Ctx {}
+    fn ctx(&self) -> Self::Ctx {}
 }
 
-unsafe impl<'a, E: Scalar> ConjCtx<NdDenseViewRepr<'a, E>> for () {
-    type Res = NdDenseRepr<E>;
+impl<'a, E: Scalar + Lapack> Context<Nd, NormRepr<NdDenseViewRepr<'a, E>>> for () {
+    type Output = Result<E::Real, Infallible>;
 
-    type Err = TenalgErr;
+    fn execute(self, task: NormRepr<NdDenseViewRepr<'a, E>>) -> Self::Output {
+        Ok(task.into_raw().data.norm_l2())
+    }
+}
 
-    fn conjugate(self, a: NdDenseViewRepr<'a, E>) -> Result<Self::Res, Self::Err> {
+impl<'a, E: Scalar + Lapack> RuntimeFor<NormRepr<NdDenseViewRepr<'a, E>>> for NdRuntime {
+    type Mk = Nd;
+    type Ctx = ();
+
+    fn ctx(&self) -> Self::Ctx {}
+}
+
+impl<'a, E: Scalar> Context<Nd, ConjRepr<NdDenseViewRepr<'a, E>>> for () {
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
+
+    fn execute(self, task: ConjRepr<NdDenseViewRepr<'a, E>>) -> Self::Output {
         Ok(NdDenseRepr {
-            data: conj(&a.data)?,
+            data: conj(&task.into_raw().data)?,
         })
     }
+}
+
+unsafe impl<'a, E: Scalar> ReprContext<Nd, 1, ConjRepr<NdDenseViewRepr<'a, E>>> for () {
+    type Repr = NdDenseRepr<E>;
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
+impl<'a, E: Scalar> RuntimeFor<ConjRepr<NdDenseViewRepr<'a, E>>> for NdRuntime {
+    type Mk = Nd;
+    type Ctx = ();
+
+    fn ctx(&self) -> Self::Ctx {}
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Diag;
 
-unsafe impl<'a, E: Scalar> ExpCtxImpl<NdDenseViewRepr<'a, E>> for Diag {
-    type Res = NdDenseRepr<E>;
+impl<'a, E: Scalar> Context<Nd, ExpRepr<NdDenseViewRepr<'a, E>>> for Diag {
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
 
-    type Err = TenalgErr;
-
-    unsafe fn exp_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<Self::Res, Self::Err> {
+    fn execute(self, task: ExpRepr<NdDenseViewRepr<'a, E>>) -> Self::Output {
+        let (a, axes_split) = task.into_raw();
         let (_, [l_set, r_set]) = axes_split.into_raw();
-        // lset rset
-
-        let a_raw = a.data;
         let l_set_len = l_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
-
-        #[cfg(test)]
-        {
-            std::println!("a_rot shape: {:?}", a_rot.shape());
-            std::println!("l_set rset: {:?} {:?}", l_set, r_set);
-        }
-
+        let a_idxv_ordered: Vec<usize> = l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let raw = diag_map(a_rot, l_set_len, |x| *x = x.exp())?;
         Ok(NdDenseRepr { data: raw })
+    }
+}
+
+unsafe impl<'a, E: Scalar> ReprContext<Nd, 1, ExpRepr<NdDenseViewRepr<'a, E>>> for Diag {
+    type Repr = NdDenseRepr<E>;
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
+impl<'a, E: Scalar> RuntimeFor<ExpRepr<NdDenseViewRepr<'a, E>>> for NdRuntime {
+    type Mk = Nd;
+    type Ctx = Diag;
+
+    fn ctx(&self) -> Self::Ctx {
+        Diag
     }
 }
 
@@ -312,132 +294,107 @@ pub struct PowF;
 //#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 //pub struct DiagPowC;
 
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E> for Diag {
-    type Res = NdDenseRepr<E>;
+impl<'a, E: Scalar> Context<Nd, PowRepr<NdDenseViewRepr<'a, E>, E>> for Diag {
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
 
-    type Err = TenalgErr;
-
-    unsafe fn pow_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        power: E,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<Self::Res, Self::Err> {
+    fn execute(self, task: PowRepr<NdDenseViewRepr<'a, E>, E>) -> Self::Output {
+        let (a, power, axes_split) = task.into_raw();
         let (_, [l_set, r_set]) = axes_split.into_raw();
-        // lset rset
-
-        let a_raw = a.data;
         let l_set_len = l_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let a_idxv_ordered: Vec<usize> = l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let raw = diag_map(a_rot, l_set_len, |x| *x = x.pow(power))?;
         Ok(NdDenseRepr { data: raw })
     }
 }
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Real> for (Diag, PowF) {
-    type Res = NdDenseRepr<E>;
 
-    type Err = TenalgErr;
+unsafe impl<'a, E: Scalar> ReprContext<Nd, 1, PowRepr<NdDenseViewRepr<'a, E>, E>> for Diag {
+    type Repr = NdDenseRepr<E>;
+    type CType = Resulting<Raw, TenalgErr>;
+}
 
-    unsafe fn pow_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        power: E::Real,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<Self::Res, Self::Err> {
+impl<'a, E: Scalar> RuntimeFor<PowRepr<NdDenseViewRepr<'a, E>, E>> for NdRuntime {
+    type Mk = Nd;
+    type Ctx = Diag;
+
+    fn ctx(&self) -> Self::Ctx {
+        Diag
+    }
+}
+
+impl<'a, E: Scalar> Context<Nd, PowRepr<NdDenseViewRepr<'a, E>, E::Real>> for (Diag, PowF) {
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
+
+    fn execute(self, task: PowRepr<NdDenseViewRepr<'a, E>, E::Real>) -> Self::Output {
+        let (a, power, axes_split) = task.into_raw();
         let (_, [l_set, r_set]) = axes_split.into_raw();
-        // lset rset
-
-        let a_raw = a.data;
         let l_set_len = l_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let a_idxv_ordered: Vec<usize> = l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let raw = diag_map(a_rot, l_set_len, |x| *x = x.powf(power))?;
         Ok(NdDenseRepr { data: raw })
     }
 }
-// unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, E::Complex> for DiagPowC {
-//     type Res = NdDenseRepr<E>;
 
-//     type Err = TenalgError;
-
-//     unsafe fn pow_unchecked(
-//         self,
-//         a: NdDenseViewRepr<'a, E>,
-//         power: E::Real,
-//         axes_split: EquivGroupedAxes<2>,
-//     ) -> Result<Self::Res, Self::Err> {
-//         let (_, [l_set, r_set]) = axes_split.into_raw();
-//         // lset rset
-
-//         let a_raw = a.data;
-//         let l_set_len = l_set.len();
-
-//         let a_idxv_ordered: Vec<usize> =
-//             l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-//         let a_rot = a_raw.permuted_axes(a_idxv_ordered);
-//         let raw = diag_map(a_rot, l_set_len, |x| *x = x.powf(power))?;
-//         Ok(NdDenseRepr { data: raw })
-//     }
-// }
+unsafe impl<'a, E: Scalar>
+    ReprContext<Nd, 1, PowRepr<NdDenseViewRepr<'a, E>, E::Real>> for (Diag, PowF)
+{
+    type Repr = NdDenseRepr<E>;
+    type CType = Resulting<Raw, TenalgErr>;
+}
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PowI;
 
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, i32> for (Diag, PowI) {
-    type Res = NdDenseRepr<E>;
+impl<'a, E: Scalar> Context<Nd, PowRepr<NdDenseViewRepr<'a, E>, i32>> for (Diag, PowI) {
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
 
-    type Err = TenalgErr;
-
-    unsafe fn pow_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        power: i32,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<Self::Res, Self::Err> {
+    fn execute(self, task: PowRepr<NdDenseViewRepr<'a, E>, i32>) -> Self::Output {
+        let (a, power, axes_split) = task.into_raw();
         let (_, [l_set, r_set]) = axes_split.into_raw();
-        // lset rset
-
-        let a_raw = a.data;
         let l_set_len = l_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let a_idxv_ordered: Vec<usize> = l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let raw = diag_map(a_rot, l_set_len, |x| *x = x.powi(power))?;
         Ok(NdDenseRepr { data: raw })
     }
 }
 
+unsafe impl<'a, E: Scalar> ReprContext<Nd, 1, PowRepr<NdDenseViewRepr<'a, E>, i32>>
+    for (Diag, PowI)
+{
+    type Repr = NdDenseRepr<E>;
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Half;
 
-unsafe impl<'a, E: Scalar> PowCtxImpl<NdDenseViewRepr<'a, E>, Half> for Diag {
-    type Res = NdDenseRepr<E>;
+impl<'a, E: Scalar> Context<Nd, PowRepr<NdDenseViewRepr<'a, E>, Half>> for Diag {
+    type Output = Result<NdDenseRepr<E>, TenalgErr>;
 
-    type Err = TenalgErr;
-
-    unsafe fn pow_unchecked(
-        self,
-        a: NdDenseViewRepr<'a, E>,
-        _power: Half,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<Self::Res, Self::Err> {
+    fn execute(self, task: PowRepr<NdDenseViewRepr<'a, E>, Half>) -> Self::Output {
+        let (a, _power, axes_split) = task.into_raw();
         let (_, [l_set, r_set]) = axes_split.into_raw();
-        // lset rset
-
-        let a_raw = a.data;
         let l_set_len = l_set.len();
-
-        let a_idxv_ordered: Vec<usize> =
-            l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
-        let a_rot = a_raw.permuted_axes(a_idxv_ordered);
+        let a_idxv_ordered: Vec<usize> = l_set.iter().cloned().chain(r_set.iter().cloned()).collect();
+        let a_rot = a.data.permuted_axes(a_idxv_ordered);
         let raw = diag_map(a_rot, l_set_len, |x| *x = x.sqrt())?;
         Ok(NdDenseRepr { data: raw })
+    }
+}
+
+unsafe impl<'a, E: Scalar> ReprContext<Nd, 1, PowRepr<NdDenseViewRepr<'a, E>, Half>> for Diag {
+    type Repr = NdDenseRepr<E>;
+    type CType = Resulting<Raw, TenalgErr>;
+}
+
+impl<'a, E: Scalar> RuntimeFor<PowRepr<NdDenseViewRepr<'a, E>, Half>> for NdRuntime {
+    type Mk = Nd;
+    type Ctx = Diag;
+
+    fn ctx(&self) -> Self::Ctx {
+        Diag
     }
 }
 
@@ -462,8 +419,6 @@ mod tests {
         NdDenseTensor, NdDenseTensorExt,
         linalg::{Diag, Hermite},
     };
-    use tensory_core::tensor::TensorTask;
-
     type Leg = Prime<Id128>;
 
     type Tensor = NdDenseTensor<f64, VecMapper<Leg>>;
@@ -486,7 +441,7 @@ mod tests {
         let us = Leg::new();
         let vs = Leg::new();
 
-        let (u, s, v) = t.view().svd(ls![&a, &b], us, vs)?.exec()?;
+        let (u, s, v) = t.view().svd(ls![&a, &b], us, vs)?.exec()?.unpack();
 
         //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 
@@ -567,7 +522,7 @@ mod tests {
 
         let qr_leg = Leg::new();
 
-        let (q, r) = (&t).qr(ls![&a, &b], qr_leg)?.with(())?;
+        let (q, r) = (&t).qr(ls![&a, &b], qr_leg)?.with(())?.unpack();
 
         //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 
@@ -650,7 +605,8 @@ mod tests {
         let (vc, d, v) = t
             .view()
             .eig(ls![(&a, &a.prime()), (&b, &b.prime())], vcd, dv)?
-            .with(Hermite)?;
+            .with(Hermite)?
+            .unpack();
 
         //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 
@@ -735,7 +691,8 @@ mod tests {
         let (v, d) = t
             .view()
             .solve_eig(ls![(&a, &a.prime()), (&b, &b.prime())], vd, dvinv)?
-            .with(())?;
+            .with(())?
+            .unpack();
 
         //let s = s.map(|e| <f64 as Scalar>::Complex::from_real(*e));
 
@@ -752,7 +709,7 @@ mod tests {
         let tv_tmp = (&t_comp
             * v.view()
                 .replace_leg(lm![&a => a.prime(), &b => b.prime(),&vd => dvinv])?)?
-        .with(())?;
+            .with(())?;
 
         for ai in 0..a_n {
             for bi in 0..b_n {

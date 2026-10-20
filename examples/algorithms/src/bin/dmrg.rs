@@ -85,8 +85,14 @@ fn main() -> anyhow::Result<()> {
 
             let dum = Leg::new();
             let (u, s, v) = (&center)
-                .svd(ls![&phys[i], &psi_virt[i]], psi_virt[i + 1], dum)?
-                .with(max_ix(5))?;
+                .svd_with_option(
+                    ls![&phys[i], &psi_virt[i]],
+                    psi_virt[i + 1],
+                    dum,
+                    max_ix(5),
+                )?
+                .with(())?
+                .unpack();
 
             let s = s.map(|e| e.into());
 

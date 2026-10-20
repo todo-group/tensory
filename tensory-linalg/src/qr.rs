@@ -1,100 +1,58 @@
 use alloc::vec;
 
 use tensory_core::{
+    concept::{
+        container::{Raw, Resulting},
+        task::{Context, RuntimeErr, RuntimeFor},
+    },
     mapper::{AxisMapper, DecompConf, DecompGroupedMapper, GroupMapper, GroupedAxes, SplittyErr},
-    prelude::ToBoundTensor,
-    repr::TensorRepr,
-    tensor::{Tensor, TensorTask, ToTensor},
+    repr::TensorTupleRepr,
+    tensor::{BoundTensorTuple, TensorTuple, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
-/// Raw context of QR operation.
-///
-/// This trait is unsafe because the implementation must ensure that the list of `QrAxisProvenance` is valid for the given tensor.
-pub unsafe trait QrCtxImpl<A: TensorRepr> {
-    /// The type of the result tensor representation corresponding Q.
-    type Q: TensorRepr; // axis order: a, <from A for Q>
-    /// The type of the result tensor representation corresponding R.
-    type R: TensorRepr; // axis order: a, b
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs QR operation on the tensors `a` with the given axes put into U and the rests into V, and returns the result tensors and the provenance of each axis.
-    ///
-    /// # Safety
-    ///
-    /// the user must ensure that the axes are valid for the given tensor.
-    ///
-    /// the implementor must ensure the list of `QrAxisProvenance` is valid for the given tensor.
-    unsafe fn qr_unchecked(
-        self,
-        a: A,
-        axes_split: GroupedAxes<2>,
-    ) -> Result<(Self::Q, Self::R), Self::Err>;
-}
-
-/// Safe version if QrContextImpl.
-///
-/// The blanket implementation checks both input and output.
-pub trait QrCtx<A: TensorRepr>: QrCtxImpl<A> {
-    fn qr(self, a: A, axes_split: GroupedAxes<2>) -> Result<(Self::Q, Self::R), Self::Err>;
-}
-impl<C: QrCtxImpl<A>, A: TensorRepr> QrCtx<A> for C {
-    fn qr(self, a: A, axes_split: GroupedAxes<2>) -> Result<(Self::Q, Self::R), Self::Err> {
-        if a.naxes() != axes_split.len() {
-            panic!("Incompatible tensor dimensions");
-        }
-        unsafe { self.qr_unchecked(a, axes_split) }
-    }
-}
-
+/// Lazy representation of a QR operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorQr<A: TensorRepr, M: AxisMapper> {
+pub struct QrRepr<A: TensorTupleRepr<1>> {
     a: A,
-    q_legs: M,
-    r_legs: M,
     axes_split: GroupedAxes<2>,
 }
 
-impl<A: TensorRepr, M: AxisMapper, C: QrCtx<A>> TensorTask<C> for TensorQr<A, M> {
-    type Output = Result<(Tensor<C::Q, M>, Tensor<C::R, M>), C::Err>;
-
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
-        let axes_split = self.axes_split;
-
-        let (q, r) = unsafe { ctx.qr_unchecked(a, axes_split) }?;
-
-        Ok((
-            unsafe { Tensor::from_raw_unchecked(q, self.q_legs) },
-            unsafe { Tensor::from_raw_unchecked(r, self.r_legs) },
-        ))
+unsafe impl<A: TensorTupleRepr<1>> TensorTupleRepr<2> for QrRepr<A> {
+    fn naxes_array(&self) -> [usize; 2] {
+        let (_, [q_axes, r_axes]) = self.axes_split.clone().into_raw();
+        [q_axes.len() + 1, r_axes.len() + 1]
     }
 }
 
-impl<A: TensorRepr, M: AxisMapper> TensorQr<A, M> {
-    pub unsafe fn from_raw_unchecked(
-        a: A,
-        q_legs: M,
-        r_legs: M,
-        axes_split: GroupedAxes<2>,
-    ) -> Self {
-        TensorQr {
-            a,
-            q_legs,
-            r_legs,
-            axes_split,
-        }
+impl<A: TensorTupleRepr<1>> tensory_core::concept::task::IsTask for QrRepr<A> {}
+
+impl<A: TensorTupleRepr<1>> QrRepr<A> {
+    /// Creates a QR representation without validating its metadata.
+    ///
+    /// # Safety
+    ///
+    /// `axes_split` must describe all axes of `a`, and the enclosing tuple's
+    /// mappers must match the two output representations.
+    pub unsafe fn from_raw_unchecked(a: A, axes_split: GroupedAxes<2>) -> Self {
+        Self { a, axes_split }
+    }
+
+    /// Decomposes the representation into its input and axis metadata.
+    pub fn into_raw(self) -> (A, GroupedAxes<2>) {
+        (self.a, self.axes_split)
     }
 }
 
+/// Lazy QR construction for ordinary tensors.
 pub trait TensorQrExt: ToTensor {
+    /// Builds a QR task with separate IDs for the two bonds.
     fn qr_with_more_ids<Q>(
         self,
         query: Q,
         q_qr_leg: <Self::Mapper as AxisMapper>::Id,
         r_qr_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorQr<Self::Repr, Self::Mapper>,
+        TensorTuple<2, QrRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
@@ -103,12 +61,14 @@ pub trait TensorQrExt: ToTensor {
     where
         Self::Mapper: GroupMapper<2, Q>,
         <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>;
+
+    /// Builds a QR task using one shared ID for both bonds.
     fn qr<Q>(
         self,
         query: Q,
         qr_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorQr<Self::Repr, Self::Mapper>,
+        TensorTuple<2, QrRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
@@ -127,7 +87,7 @@ impl<T: ToTensor> TensorQrExt for T {
         q_qr_leg: <Self::Mapper as AxisMapper>::Id,
         r_qr_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorQr<Self::Repr, Self::Mapper>,
+        TensorTuple<2, QrRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
@@ -137,7 +97,7 @@ impl<T: ToTensor> TensorQrExt for T {
         Self::Mapper: GroupMapper<2, Q>,
         <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
     {
-        let (raw, legs) = self.to_tensor().into_raw();
+        let (raw, [legs]) = self.to_tensor().into_raw();
         let (grouped, axes_split) = legs.split(query).map_err(SplittyErr::Split)?;
         let [q_legs, r_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
@@ -146,14 +106,16 @@ impl<T: ToTensor> TensorQrExt for T {
             ))
         }
         .map_err(SplittyErr::Use)?;
-        Ok(unsafe { TensorQr::from_raw_unchecked(raw, q_legs, r_legs, axes_split) })
+        let repr = unsafe { QrRepr::from_raw_unchecked(raw, axes_split) };
+        Ok(unsafe { TensorTuple::from_raw_unchecked(repr, [q_legs, r_legs]) })
     }
+
     fn qr<Q>(
         self,
-        set: Q,
+        query: Q,
         qr_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorQr<Self::Repr, Self::Mapper>,
+        TensorTuple<2, QrRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as GroupMapper<2, Q>>::Err,
             <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
@@ -164,10 +126,175 @@ impl<T: ToTensor> TensorQrExt for T {
         <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
         <Self::Mapper as AxisMapper>::Id: Clone,
     {
-        self.qr_with_more_ids(set, qr_leg.clone(), qr_leg)
+        self.qr_with_more_ids(query, qr_leg.clone(), qr_leg)
     }
 }
 
-pub trait BoundTensorQrExt: ToBoundTensor {}
+/// Runtime-bound QR construction and execution.
+pub trait BoundTensorQrExt: ToBoundTensorTuple<1> {
+    /// Builds and executes a QR with separate IDs for the two bonds.
+    fn qr_with_more_ids<Q, E>(
+        self,
+        query: Q,
+        q_qr_leg: <Self::Mapper as AxisMapper>::Id,
+        r_qr_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            2,
+            <<Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+                2,
+                QrRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
+        Self::Runtime: RuntimeFor<QrRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+            2,
+            QrRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >;
 
-impl<T: ToBoundTensor> BoundTensorQrExt for T {}
+    /// Builds and executes a QR using one shared ID for both bonds.
+    fn qr<Q, E>(
+        self,
+        query: Q,
+        qr_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            2,
+            <<Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+                2,
+                QrRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
+        Self::Runtime: RuntimeFor<QrRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+            2,
+            QrRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >;
+}
+
+impl<T: ToBoundTensorTuple<1>> BoundTensorQrExt for T {
+    fn qr_with_more_ids<Q, E>(
+        self,
+        query: Q,
+        q_qr_leg: <Self::Mapper as AxisMapper>::Id,
+        r_qr_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            2,
+            <<Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+                2,
+                QrRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
+        Self::Runtime: RuntimeFor<QrRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+            2,
+            QrRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >,
+    {
+        let (a, runtime) = self.to_bound_tensor_tuple().into_raw();
+        let task = a
+            .qr_with_more_ids(query, q_qr_leg, r_qr_leg)
+            .map_err(RuntimeErr::Defer)?;
+        let result = runtime
+            .ctx()
+            .execute(task)
+            .map_err(RuntimeErr::Execute)?;
+        Ok(BoundTensorTuple::from_raw(result, runtime))
+    }
+
+    fn qr<Q, E>(
+        self,
+        query: Q,
+        qr_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            2,
+            <<Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+                2,
+                QrRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as GroupMapper<2, Q>>::Err,
+                <<Self::Mapper as GroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 2>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: GroupMapper<2, Q>,
+        <Self::Mapper as GroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 2>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
+        Self::Runtime: RuntimeFor<QrRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<QrRepr<Self::Repr>>>::Mk,
+            2,
+            QrRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >,
+    {
+        self.qr_with_more_ids(query, qr_leg.clone(), qr_leg)
+    }
+}

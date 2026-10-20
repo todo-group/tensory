@@ -8,6 +8,7 @@ use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
 use tensory_ndarray::{
     NdDenseTensor, NdDenseTensorExt,
+    cut_filter::max_ix,
     linalg::{Diag, Half, Hermite, PowF, PowI},
 };
 
@@ -173,18 +174,25 @@ fn main() -> anyhow::Result<()> {
     // svd
     {
         let t = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?; // [a,b,c,d]
-        let (u, s, v_dagger) = (&t).svd(ls![&a, &b], e, f)?.exec()?; // u:[a,b,e], s:[e,f], v:[f,c,d]
+        let (u, s, v_dagger) = (&t)
+            .svd_with_option(ls![&a, &b], e, f, max_ix(10))?
+            .exec()?
+            .unpack(); // u:[a,b,e], s:[e,f], v:[f,c,d]
         let t_reconstructed = (&(&u * &s)?.exec()? * &v_dagger)?.exec()?; // [a,b,c,d]
         println!(
-            "relative error of eig reconstruct (A ?= U * S * V^†): {}",
+            "relative error of svd reconstruct (A ?= U * S * V^†): {}",
             (&(&t_reconstructed - &t)?.exec()?).norm().exec()? / (&t).norm().exec()?
         );
+        let u_inner = u.repr().clone().into_raw();
+        let s_inner = s.repr().clone().into_raw();
+
+        println!("{:?}, {:?}", u_inner.shape(), s_inner.shape());
     }
 
     // qr
     {
         let t = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?; // [a,b,c,d]
-        let (q, r) = (&t).qr(ls![&a, &b], e)?.with(())?; // q:[a,b,e], r:[e,c,d]
+        let (q, r) = (&t).qr(ls![&a, &b], e)?.with(())?.unpack(); // q:[a,b,e], r:[e,c,d]
         let t_reconstructed = (&q * &r)?.exec()?; // [a,b,c,d]
         println!(
             "relative error of qr reconstruct (A ?= Q * R): {}",
@@ -200,7 +208,8 @@ fn main() -> anyhow::Result<()> {
         )?; // [a,a',b,b']
         let (v, d, v_dagger) = (&t)
             .eig(ls![(&a, &a.prime()), (&b, &b.prime())], e, f)?
-            .with(Hermite)?; // v:[a,a',e], d:[e,f], vc:[f,b',b]
+            .with(Hermite)?
+            .unpack(); // v:[a,a',e], d:[e,f], vc:[f,b',b]
         // as Diag, Hermite is used when the operation implementation assumes the passed matrix is hermitian.
         let t_reconstructed = (&(&v * &d)?.exec()? * &v_dagger)?.exec()?; // [a,a',b,b']
         println!(
@@ -217,7 +226,8 @@ fn main() -> anyhow::Result<()> {
         )?; // [a,a',b,b']
         let (v, d) = (&t)
             .solve_eig(ls![(&a, &a.prime()), (&b, &b.prime())], e, f)?
-            .with(())?; // v:[a,b,e], d:[e,f]
+            .with(())?
+            .unpack(); // v:[a,b,e], d:[e,f]
         let t_v = (
             &t * (&v).replace_leg(lm![&a=>a.prime(),&b=>b.prime(),&e=>f])?
             // [a',b',f]

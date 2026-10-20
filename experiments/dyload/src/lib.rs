@@ -20,18 +20,19 @@ pub type c_float_complex = [c_float; 2];
 //
 // http://www.netlib.org/blas/#_level_1
 
-type SrotgFn = extern "C" fn(a: *mut c_float, b: *mut c_float, c: *mut c_float, s: *mut c_float);
+pub type SrotgFn =
+    extern "C" fn(a: *mut c_float, b: *mut c_float, c: *mut c_float, s: *mut c_float);
 
 // Single
 
-type SrotmgFn = extern "C" fn(
+pub type SrotmgFn = extern "C" fn(
     d1: *mut c_float,
     d2: *mut c_float,
     x1: *mut c_float,
     y1: *const c_float,
     param: *mut c_float,
 );
-type SrotFn = extern "C" fn(
+pub type SrotFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_float,
     incx: *const c_int,
@@ -40,7 +41,7 @@ type SrotFn = extern "C" fn(
     c: *const c_float,
     s: *const c_float,
 );
-type SrotmFn = extern "C" fn(
+pub type SrotmFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_float,
     incx: *const c_int,
@@ -48,7 +49,7 @@ type SrotmFn = extern "C" fn(
     incy: *const c_int,
     param: *const c_float,
 );
-type SswapFn = extern "C" fn(
+pub type SswapFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_float,
     incx: *const c_int,
@@ -56,9 +57,9 @@ type SswapFn = extern "C" fn(
     incy: *const c_int,
 );
 
-type SscalFn =
+pub type SscalFn =
     extern "C" fn(n: *const c_int, a: *const c_float, x: *mut c_float, incx: *const c_int);
-type ScopyFn = extern "C" fn(
+pub type ScopyFn = extern "C" fn(
     n: *const c_int,
     x: *const c_float,
     incx: *const c_int,
@@ -66,7 +67,7 @@ type ScopyFn = extern "C" fn(
     incy: *const c_int,
 );
 
-type SaxpyFn = extern "C" fn(
+pub type SaxpyFn = extern "C" fn(
     n: *const c_int,
     alpha: *const c_float,
     x: *const c_float,
@@ -75,7 +76,7 @@ type SaxpyFn = extern "C" fn(
     incy: *const c_int,
 );
 
-type SdotFn = extern "C" fn(
+pub type SdotFn = extern "C" fn(
     n: *const c_int,
     x: *const c_float,
     incx: *const c_int,
@@ -83,7 +84,7 @@ type SdotFn = extern "C" fn(
     incy: *const c_int,
 ) -> c_float;
 
-type SdsdotFn = extern "C" fn(
+pub type SdsdotFn = extern "C" fn(
     n: *const c_int,
     sb: *const c_float,
     x: *const c_float,
@@ -92,23 +93,23 @@ type SdsdotFn = extern "C" fn(
     incy: *const c_int,
 ) -> c_float;
 
-type Snrm2Fn = extern "C" fn(n: *const c_int, x: *const c_float, incx: *const c_int) -> c_float;
-type Scnrm2Fn =
+pub type Snrm2Fn = extern "C" fn(n: *const c_int, x: *const c_float, incx: *const c_int) -> c_float;
+pub type Scnrm2Fn =
     extern "C" fn(n: *const c_int, x: *const c_float_complex, incx: *const c_int) -> c_float;
-type SasumFn = extern "C" fn(n: *const c_int, x: *const c_float, incx: *const c_int) -> c_float;
-type IsamaxFn = extern "C" fn(n: *const c_int, x: *const c_float, incx: *const c_int) -> c_int;
+pub type SasumFn = extern "C" fn(n: *const c_int, x: *const c_float, incx: *const c_int) -> c_float;
+pub type IsamaxFn = extern "C" fn(n: *const c_int, x: *const c_float, incx: *const c_int) -> c_int;
 
 // Double
-type DrotgFn =
+pub type DrotgFn =
     extern "C" fn(a: *mut c_double, b: *mut c_double, c: *mut c_double, s: *mut c_double);
-type DrotmgFn = extern "C" fn(
+pub type DrotmgFn = extern "C" fn(
     d1: *mut c_double,
     d2: *mut c_double,
     x1: *mut c_double,
     y1: *const c_double,
     param: *mut c_double,
 );
-type DrotFn = extern "C" fn(
+pub type DrotFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_double,
     incx: *const c_int,
@@ -117,7 +118,7 @@ type DrotFn = extern "C" fn(
     c: *const c_double,
     s: *const c_double,
 );
-type DrotmFn = extern "C" fn(
+pub type DrotmFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_double,
     incx: *const c_int,
@@ -125,23 +126,23 @@ type DrotmFn = extern "C" fn(
     incy: *const c_int,
     param: *const c_double,
 );
-type DswapFn = extern "C" fn(
+pub type DswapFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_double,
     incx: *const c_int,
     y: *mut c_double,
     incy: *const c_int,
 );
-type DscalFn =
+pub type DscalFn =
     extern "C" fn(n: *const c_int, a: *const c_double, x: *mut c_double, incx: *const c_int);
-type DcopyFn = extern "C" fn(
+pub type DcopyFn = extern "C" fn(
     n: *const c_int,
     x: *const c_double,
     incx: *const c_int,
     y: *mut c_double,
     incy: *const c_int,
 );
-type DaxpyFn = extern "C" fn(
+pub type DaxpyFn = extern "C" fn(
     n: *const c_int,
     alpha: *const c_double,
     x: *const c_double,
@@ -149,33 +150,35 @@ type DaxpyFn = extern "C" fn(
     y: *mut c_double,
     incy: *const c_int,
 );
-type DdotFn = extern "C" fn(
+pub type DdotFn = extern "C" fn(
     n: *const c_int,
     x: *const c_double,
     incx: *const c_int,
     y: *const c_double,
     incy: *const c_int,
 ) -> c_double;
-type DsdotFn = extern "C" fn(
+pub type DsdotFn = extern "C" fn(
     n: *const c_int,
     x: *const c_float,
     incx: *const c_int,
     y: *const c_float,
     incy: *const c_int,
 ) -> c_double;
-type Dnrm2Fn = extern "C" fn(n: *const c_int, x: *const c_double, incx: *const c_int) -> c_double;
-type Dznrm2Fn =
+pub type Dnrm2Fn =
+    extern "C" fn(n: *const c_int, x: *const c_double, incx: *const c_int) -> c_double;
+pub type Dznrm2Fn =
     extern "C" fn(n: *const c_int, x: *const c_double_complex, incx: *const c_int) -> c_double;
-type DasumFn = extern "C" fn(n: *const c_int, x: *const c_double, incx: *const c_int) -> c_double;
-type IdamaxFn = extern "C" fn(n: *const c_int, x: *const c_double, incx: *const c_int) -> c_int;
+pub type DasumFn =
+    extern "C" fn(n: *const c_int, x: *const c_double, incx: *const c_int) -> c_double;
+pub type IdamaxFn = extern "C" fn(n: *const c_int, x: *const c_double, incx: *const c_int) -> c_int;
 // Complex
-type CrotgFn = extern "C" fn(
+pub type CrotgFn = extern "C" fn(
     a: *mut c_float_complex,
     b: *const c_float_complex,
     c: *mut c_float,
     s: *mut c_float_complex,
 );
-type CsrotFn = extern "C" fn(
+pub type CsrotFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_float_complex,
     incx: *const c_int,
@@ -184,29 +187,29 @@ type CsrotFn = extern "C" fn(
     c: *const c_float,
     s: *const c_float,
 );
-type CswapFn = extern "C" fn(
+pub type CswapFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_float_complex,
     incx: *const c_int,
     y: *mut c_float_complex,
     incy: *const c_int,
 );
-type CscalFn = extern "C" fn(
+pub type CscalFn = extern "C" fn(
     n: *const c_int,
     a: *const c_float_complex,
     x: *mut c_float_complex,
     incx: *const c_int,
 );
-type CsscalFn =
+pub type CsscalFn =
     extern "C" fn(n: *const c_int, a: *const c_float, x: *mut c_float_complex, incx: *const c_int);
-type CcopyFn = extern "C" fn(
+pub type CcopyFn = extern "C" fn(
     n: *const c_int,
     x: *const c_float_complex,
     incx: *const c_int,
     y: *mut c_float_complex,
     incy: *const c_int,
 );
-type CaxpyFn = extern "C" fn(
+pub type CaxpyFn = extern "C" fn(
     n: *const c_int,
     alpha: *const c_float_complex,
     x: *const c_float_complex,
@@ -214,7 +217,7 @@ type CaxpyFn = extern "C" fn(
     y: *mut c_float_complex,
     incy: *const c_int,
 );
-type CdotuFn = extern "C" fn(
+pub type CdotuFn = extern "C" fn(
     pres: *mut c_float_complex,
     n: *const c_int,
     x: *const c_float_complex,
@@ -222,7 +225,7 @@ type CdotuFn = extern "C" fn(
     y: *const c_float_complex,
     incy: *const c_int,
 );
-type CdotcFn = extern "C" fn(
+pub type CdotcFn = extern "C" fn(
     pres: *mut c_float_complex,
     n: *const c_int,
     x: *const c_float_complex,
@@ -230,19 +233,19 @@ type CdotcFn = extern "C" fn(
     y: *const c_float_complex,
     incy: *const c_int,
 );
-type ScasumFn =
+pub type ScasumFn =
     extern "C" fn(n: *const c_int, x: *const c_float_complex, incx: *const c_int) -> c_float;
-type IcamaxFn =
+pub type IcamaxFn =
     extern "C" fn(n: *const c_int, x: *const c_float_complex, incx: *const c_int) -> c_int;
 
 // Double complex
-type ZrotgFn = extern "C" fn(
+pub type ZrotgFn = extern "C" fn(
     a: *mut c_double_complex,
     b: *const c_double_complex,
     c: *mut c_double,
     s: *mut c_double_complex,
 );
-type ZdrotFn = extern "C" fn(
+pub type ZdrotFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_double_complex,
     incx: *const c_int,
@@ -251,26 +254,26 @@ type ZdrotFn = extern "C" fn(
     c: *const c_double,
     s: *const c_double,
 );
-type ZswapFn = extern "C" fn(
+pub type ZswapFn = extern "C" fn(
     n: *const c_int,
     x: *mut c_double_complex,
     incx: *const c_int,
     y: *mut c_double_complex,
     incy: *const c_int,
 );
-type ZscalFn = extern "C" fn(
+pub type ZscalFn = extern "C" fn(
     n: *const c_int,
     a: *const c_double_complex,
     x: *mut c_double_complex,
     incx: *const c_int,
 );
-type ZdscalFn = extern "C" fn(
+pub type ZdscalFn = extern "C" fn(
     n: *const c_int,
     a: *const c_double,
     x: *mut c_double_complex,
     incx: *const c_int,
 );
-type ZcopyFn = extern "C" fn(
+pub type ZcopyFn = extern "C" fn(
     n: *const c_int,
     x: *const c_double_complex,
     incx: *const c_int,

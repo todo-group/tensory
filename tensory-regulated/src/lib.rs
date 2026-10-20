@@ -9,18 +9,19 @@ pub mod utils;
 use core::marker::PhantomData;
 
 use tensory_core::{
-    repr::{AsViewRepr, TensorRepr},
-    tensor::{Tensor, TensorTask, ToTensor},
+    concept::task::{Context, IsTask},
+    repr::{AsViewRepr, TensorRepr, TensorTupleRepr},
+    tensor::{Tensor, ToTensor},
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct RegulatedRepr<A: TensorRepr, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation> {
+pub struct RegulatedRepr<A: TensorTupleRepr<1>, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation> {
     repr: A,
     coeff: C,
     _reg: PhantomData<N>,
 }
 
-impl<A: TensorRepr + Clone, C: CoefficientRepr<Scalar = N::Scalar> + Clone, N: Regulation> Clone
+impl<A: TensorTupleRepr<1> + Clone, C: CoefficientRepr<Scalar = N::Scalar> + Clone, N: Regulation> Clone
     for RegulatedRepr<A, C, N>
 {
     fn clone(&self) -> Self {
@@ -32,6 +33,12 @@ impl<A: TensorRepr + Clone, C: CoefficientRepr<Scalar = N::Scalar> + Clone, N: R
     }
 }
 
+/// Represents a coefficient carried alongside a regulated tensor.
+///
+/// # Safety
+///
+/// Implementations must preserve the coefficient algebra represented by each
+/// operation and keep the associated scalar type consistent.
 pub unsafe trait CoefficientRepr: Sized {
     type Scalar;
     fn build(scalar: Self::Scalar) -> Self;
@@ -45,38 +52,61 @@ pub trait UnpackableCoefficientRepr: CoefficientRepr {
     fn unpack(self) -> Self::Scalar;
 }
 
+/// Defines the scalar type used by a regulation scheme.
+///
+/// # Safety
+///
+/// The associated scalar type must be valid for every regulator and inflator
+/// implementation using this regulation scheme.
 pub unsafe trait Regulation: Sized {
     type Scalar;
 }
-pub unsafe trait Regulator<A: TensorRepr>: Regulation {
-    type Res: TensorRepr;
+/// Normalizes a tensor representation and extracts its coefficient.
+///
+/// # Safety
+///
+/// Implementations must preserve the value represented by the input tensor and
+/// return a coefficient compatible with the normalized representation.
+pub unsafe trait Regulator<A: TensorTupleRepr<1>>: Regulation {
+    type Res: TensorTupleRepr<1>;
     fn regulate(repr: A) -> (Self::Res, Self::Scalar);
     // fn scalar_mul(repr: A, scalar: Self::Scalar) -> A;
     // fn scalar_div(repr: A, scalar: Self::Scalar) -> A;
 }
+/// Normalizes a scalar and extracts its coefficient.
+///
+/// # Safety
+///
+/// Implementations must preserve the represented scalar value.
 pub unsafe trait ScalarRegulator<E>: Regulation {
     fn scalar_regulate(scalar: E) -> (E, Self::Scalar);
 }
 
-// pub unsafe trait DivRegulator<A: TensorRepr, E>: Regulation {
-//     type Res: TensorRepr;
+// pub unsafe trait DivRegulator<A: TensorTupleRepr<1>, E>: Regulation {
+//     type Res: TensorTupleRepr<1>;
 //     fn div_regulate(repr: A, scalar: E) -> (Self::Res, Self::Scalar);
 // }
 
-pub unsafe trait Inflator<A: TensorRepr>: Regulation {
-    type Res: TensorRepr;
+/// Restores a regulated tensor using a coefficient.
+///
+/// # Safety
+///
+/// Implementations must preserve the axis structure and apply the coefficient
+/// according to the regulation scheme.
+pub unsafe trait Inflator<A: TensorTupleRepr<1>>: Regulation {
+    type Res: TensorTupleRepr<1>;
     fn inflate(repr: A, coeff: Self::Scalar) -> Self::Res;
 }
 
-unsafe impl<A: TensorRepr, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation> TensorRepr
+unsafe impl<A: TensorTupleRepr<1>, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation> TensorTupleRepr<1>
     for RegulatedRepr<A, C, N>
 {
-    fn naxes(&self) -> usize {
-        self.repr.naxes()
+    fn naxes_array(&self) -> [usize; 1] {
+        [self.repr.naxes()]
     }
 }
 
-impl<A: TensorRepr, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation> RegulatedRepr<A, C, N> {
+impl<A: TensorTupleRepr<1>, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation> RegulatedRepr<A, C, N> {
     // pub fn new(repr: A, normalizer: N) -> Self {
     //     Self { repr, normalizer }
     // }
@@ -87,10 +117,10 @@ impl<A: TensorRepr, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation> Regul
 
 unsafe impl<
     'a,
-    A: TensorRepr + AsViewRepr<'a>,
+    A: TensorTupleRepr<1> + AsViewRepr<'a, 1>,
     C: CoefficientRepr<Scalar = N::Scalar> + Clone,
     N: Regulation,
-> AsViewRepr<'a> for RegulatedRepr<A, C, N>
+> AsViewRepr<'a, 1> for RegulatedRepr<A, C, N>
 {
     type View = RegulatedRepr<A::View, C, N>;
     fn view(&'a self) -> Self::View {
@@ -104,7 +134,7 @@ unsafe impl<
 
 // unsafe impl<
 //     'a,
-//     A: TensorRepr + AsViewMutRepr<'a>,
+//     A: TensorTupleRepr<1> + AsViewMutRepr<'a>,
 //     C: Coefficienty<Scalar = N::Scalar> + Clone,
 //     N: RegulatorCore,
 // > AsViewMutRepr<'a> for RegulatedRepr<A, C, N>
@@ -122,27 +152,34 @@ unsafe impl<
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub struct RegulatedCtx<C>(C);
 
-pub trait TensorRegulatedTask<C>: TensorTask<RegulatedCtx<C>> {
-    fn with_regulated(self, inner_ctx: C) -> Self::Output;
+pub trait TensorRegulatedTask<C>: IsTask {
+    fn with_regulated<Mk>(
+        self,
+        inner_ctx: C,
+    ) -> <RegulatedCtx<C> as Context<Mk, Self>>::Output
+    where
+        Self: Sized,
+        RegulatedCtx<C>: Context<Mk, Self>;
 }
 
-impl<T: TensorTask<RegulatedCtx<C>>, C> TensorRegulatedTask<C> for T {
-    fn with_regulated(self, inner_ctx: C) -> Self::Output {
-        self.with(RegulatedCtx(inner_ctx))
+impl<T: IsTask, C> TensorRegulatedTask<C> for T {
+    fn with_regulated<Mk>(
+        self,
+        inner_ctx: C,
+    ) -> <RegulatedCtx<C> as Context<Mk, Self>>::Output
+    where
+        Self: Sized,
+        RegulatedCtx<C>: Context<Mk, Self>,
+    {
+        RegulatedCtx(inner_ctx).execute(self)
     }
 }
 
-pub trait TensorDefaultRegulatedTask: TensorTask<RegulatedCtx<()>> {
-    fn exec(self) -> Self::Output;
-}
+pub trait TensorDefaultRegulatedTask: IsTask {}
 
-impl<T: TensorTask<RegulatedCtx<()>>> TensorDefaultRegulatedTask for T {
-    fn exec(self) -> Self::Output {
-        self.with(RegulatedCtx(()))
-    }
-}
+impl<T: IsTask> TensorDefaultRegulatedTask for T {}
 
-pub trait RegulatedTensorExt<A: TensorRepr, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation>:
+pub trait RegulatedTensorExt<A: TensorTupleRepr<1>, C: CoefficientRepr<Scalar = N::Scalar>, N: Regulation>:
     ToTensor<Repr = RegulatedRepr<A, C, N>> + Sized
 {
     fn into_inner_tensor(self) -> (Tensor<A, Self::Mapper>, C);
@@ -152,7 +189,7 @@ pub trait RegulatedTensorExt<A: TensorRepr, C: CoefficientRepr<Scalar = N::Scala
         N: Inflator<A>;
 }
 impl<
-    A: TensorRepr,
+    A: TensorTupleRepr<1>,
     C: CoefficientRepr<Scalar = N::Scalar>,
     N: Regulation,
     T: ToTensor<Repr = RegulatedRepr<A, C, N>>,

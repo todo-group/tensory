@@ -1,94 +1,54 @@
 use alloc::vec;
 
 use tensory_core::{
-    bound_tensor::{BoundTensor, Runtime, ToBoundTensor},
-    mapper::{
-        AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes,
-        GroupMapper, SplittyErr,
+    concept::{
+        container::{Raw, Resulting},
+        task::{Context, RuntimeErr, RuntimeFor},
     },
-    prelude::RuntimeErr,
-    repr::TensorRepr,
-    tensor::{Tensor, TensorTask, ToTensor},
+    mapper::{DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, SplittyErr},
+    repr::TensorTupleRepr,
+    tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
-/// Raw context of exponentiation operation.
-///
-/// # Safety
-///
-/// The implementor MUST ensure that the result tensor has the specified "axis structure" by the axes_split.
-pub unsafe trait ExpCtxImpl<A: TensorRepr> {
-    /// The type of the result tensor representation.
-    type Res: TensorRepr;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs exp operation on the tensors `a` with the given axes split.
-    ///
-    /// # Safety
-    ///
-    /// The user MUST ensure that the `axes_split` are valid for the given tensor.
-    unsafe fn exp_unchecked(
-        self,
-        a: A,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<Self::Res, Self::Err>;
-}
-
-/// Safe version if ExpContextImpl.
-///
-/// The blanket implementation checks both input and output.
-pub trait ExpCtx<A: TensorRepr>: ExpCtxImpl<A> {
-    fn exp(self, a: A, axes_split: EquivGroupedAxes<2>) -> Result<Self::Res, Self::Err>;
-}
-impl<C: ExpCtxImpl<A>, A: TensorRepr> ExpCtx<A> for C {
-    fn exp(self, a: A, axes_split: EquivGroupedAxes<2>) -> Result<Self::Res, Self::Err> {
-        if a.naxes() != axes_split.len() {
-            panic!("Incompatible tensor dimensions");
-        }
-        unsafe { self.exp_unchecked(a, axes_split) }
-    }
-}
-
+/// Lazy representation of a matrix exponential operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorExp<A: TensorRepr, M: AxisMapper> {
+pub struct ExpRepr<A: TensorTupleRepr<1>> {
     a: A,
-    legs: M,
     axes_split: EquivGroupedAxes<2>,
 }
 
-impl<A: TensorRepr, M: AxisMapper, C: ExpCtx<A>> TensorTask<C> for TensorExp<A, M> {
-    type Output = Result<Tensor<C::Res, M>, C::Err>;
-
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
-        let axes_split = self.axes_split;
-
-        let res = unsafe { ctx.exp_unchecked(a, axes_split) }?;
-
-        Ok(unsafe { Tensor::from_raw_unchecked(res, self.legs) })
-    }
-}
-impl<A: TensorRepr, M: AxisMapper> TensorExp<A, M> {
-    pub unsafe fn from_raw_unchecked(a: A, legs: M, axes_split: EquivGroupedAxes<2>) -> Self {
-        TensorExp {
-            a,
-            legs,
-            axes_split,
-        }
+unsafe impl<A: TensorTupleRepr<1>> TensorTupleRepr<1> for ExpRepr<A> {
+    fn naxes_array(&self) -> [usize; 1] {
+        self.a.naxes_array()
     }
 }
 
-pub trait ExpRuntime<A: TensorRepr>: Runtime {
-    type Ctx: ExpCtxImpl<A>;
-    fn exp_ctx(&self) -> Self::Ctx;
+impl<A: TensorTupleRepr<1>> tensory_core::concept::task::IsTask for ExpRepr<A> {}
+
+impl<A: TensorTupleRepr<1>> ExpRepr<A> {
+    /// Creates an exponential representation without validating metadata.
+    ///
+    /// # Safety
+    ///
+    /// `axes_split` must describe all axes of `a`.
+    pub unsafe fn from_raw_unchecked(a: A, axes_split: EquivGroupedAxes<2>) -> Self {
+        Self { a, axes_split }
+    }
+
+    /// Decomposes the representation into its input and axis metadata.
+    pub fn into_raw(self) -> (A, EquivGroupedAxes<2>) {
+        (self.a, self.axes_split)
+    }
 }
 
+/// Lazy matrix exponential construction for ordinary tensors.
 pub trait TensorExpExt: ToTensor {
+    /// Builds a lazy exponential task.
     fn exp<Q>(
         self,
         query: Q,
     ) -> Result<
-        TensorExp<Self::Repr, Self::Mapper>,
+        Tensor<ExpRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
@@ -104,7 +64,7 @@ impl<T: ToTensor> TensorExpExt for T {
         self,
         query: Q,
     ) -> Result<
-        TensorExp<Self::Repr, Self::Mapper>,
+        Tensor<ExpRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
@@ -114,21 +74,29 @@ impl<T: ToTensor> TensorExpExt for T {
         Self::Mapper: EquivGroupMapper<2, Q>,
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
     {
-        let (raw, legs) = self.to_tensor().into_raw();
+        let (raw, [legs]) = self.to_tensor().into_raw();
         let (grouped, axes_split) = legs.equiv_split(query).map_err(SplittyErr::Split)?;
-        let [legs] = unsafe { grouped.decomp(DecompConf::from_raw_unchecked([0, 0], vec![])) }
+        let [mapper] = unsafe { grouped.decomp(DecompConf::from_raw_unchecked([0, 0], vec![])) }
             .map_err(SplittyErr::Use)?;
-        Ok(unsafe { TensorExp::from_raw_unchecked(raw, legs, axes_split) })
+        let repr = unsafe { ExpRepr::from_raw_unchecked(raw, axes_split) };
+        Ok(unsafe { Tensor::from_raw_unchecked(repr, [mapper]) })
     }
 }
 
-pub trait BoundTensorExpExt: ToBoundTensor {
-    fn exp<Q>(
+/// Runtime-bound exponential construction and execution.
+pub trait BoundTensorExpExt: ToBoundTensorTuple<1> {
+    /// Builds and executes an exponential task.
+    fn exp<Q, E>(
         self,
         query: Q,
     ) -> Result<
         BoundTensor<
-            <<Self::Runtime as ExpRuntime<Self::Repr>>::Ctx as ExpCtxImpl<Self::Repr>>::Res,
+            <<Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Mk,
+                1,
+                ExpRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
             Self::Mapper,
             Self::Runtime,
         >,
@@ -137,22 +105,34 @@ pub trait BoundTensorExpExt: ToBoundTensor {
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
-            <<Self::Runtime as ExpRuntime<Self::Repr>>::Ctx as ExpCtxImpl<Self::Repr>>::Err,
+            E,
         >,
     >
     where
         Self::Mapper: EquivGroupMapper<2, Q>,
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
-        Self::Runtime: ExpRuntime<Self::Repr>;
+        Self::Runtime: RuntimeFor<ExpRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Mk,
+            1,
+            ExpRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >;
 }
 
-impl<T: ToBoundTensor> BoundTensorExpExt for T {
-    fn exp<Q>(
+impl<T: ToBoundTensorTuple<1>> BoundTensorExpExt for T {
+    fn exp<Q, E>(
         self,
         query: Q,
     ) -> Result<
         BoundTensor<
-            <<Self::Runtime as ExpRuntime<Self::Repr>>::Ctx as ExpCtxImpl<Self::Repr>>::Res,
+            <<Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Mk,
+                1,
+                ExpRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
             Self::Mapper,
             Self::Runtime,
         >,
@@ -161,20 +141,27 @@ impl<T: ToBoundTensor> BoundTensorExpExt for T {
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
-            <<Self::Runtime as ExpRuntime<Self::Repr>>::Ctx as ExpCtxImpl<Self::Repr>>::Err,
+            E,
         >,
     >
     where
         Self::Mapper: EquivGroupMapper<2, Q>,
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
-        Self::Runtime: ExpRuntime<Self::Repr>,
+        Self::Runtime: RuntimeFor<ExpRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<ExpRepr<Self::Repr>>>::Mk,
+            1,
+            ExpRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >,
     {
-        let (a, rt) = self.to_bound_tensor().into_raw();
-
-        a.exp(query)
-            .map_err(RuntimeErr::Axis)?
-            .with(rt.exp_ctx())
-            .map_err(RuntimeErr::Ctx)
-            .map(|res| res.bind(rt))
+        let (tensor, runtime) = self.to_bound_tensor_tuple().into_raw();
+        let task = tensor.exp(query).map_err(RuntimeErr::Defer)?;
+        let result = runtime
+            .ctx()
+            .execute(task)
+            .map_err(RuntimeErr::Execute)?;
+        Ok(BoundTensor::from_raw(result, runtime))
     }
 }

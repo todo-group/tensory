@@ -1,9 +1,7 @@
-mod blas;
-
 use anyhow::anyhow;
-use std::ffi::{CStr, c_char, c_double, c_int};
+use std::ffi::{CStr, c_char, c_int};
 
-use crate::blas::DgemmFn;
+use dyload_test::DgemmFn;
 
 // from openblas-sys
 // type DgemmFn = unsafe extern "C" fn(

@@ -1,30 +1,17 @@
-use core::marker::PhantomData;
 use std::println;
 
-use ndarray::ScalarOperand;
-use ndarray::Zip;
 use ndarray_linalg::c64;
-use ndarray_linalg::{Lapack, Scalar};
 use tensory_basic::mapper::VecMapper;
-use tensory_core::{
-    arith::{CommutativeScalarDivCtx, CommutativeScalarMulCtx},
-    prelude::*,
-};
+use tensory_core::prelude::*;
 use tensory_linalg::{
-    norm::{NormCtx, TensorNormExt},
+    norm::TensorNormExt,
     svd::TensorSvdExt,
 };
 use tensory_ndarray::regulated::L2Regulator;
 use tensory_ndarray::regulated::LnCoeff;
-use tensory_ndarray::{NdDenseRepr, NdDenseTensor, NdDenseTensorExt, NdDenseViewRepr, TenalgErr};
+use tensory_ndarray::{Nd, NdDenseTensor, NdDenseTensorExt};
 
-use tensory_regulated::Inflator;
-//use crate::arith::WeightedAddCtxImplReordered;
-use tensory_regulated::{
-    CoefficientRepr, RegulatedTensorExt, Regulation, Regulator, TensorDefaultRegulatedTask,
-    TensorRegulatedTask, ToRegulatedTensorExt, UnpackableCoefficientRepr,
-    arith::WeightedAddCtxImpl,
-};
+use tensory_regulated::{RegulatedTensorExt, TensorRegulatedTask, ToRegulatedTensorExt};
 
 type Tensor<E, I> = NdDenseTensor<E, VecMapper<I>>;
 
@@ -57,15 +44,15 @@ type Tensor<E, I> = NdDenseTensor<E, VecMapper<I>>;
 
 // struct ConsumeAddCtx<C>(C);
 // unsafe impl<
-//     Lhs: TensorRepr + for<'a> AsViewRepr<'a>,
-//     Rhs: TensorRepr + for<'a> AsViewRepr<'a>,
+//     Lhs: TensorTupleRepr<1> + for<'a> AsViewRepr<'a>,
+//     Rhs: TensorTupleRepr<1> + for<'a> AsViewRepr<'a>,
 //     C: for<'a, 'b> AddCtxImpl<
 //             <Lhs as AsViewRepr<'a>>::View,
 //             <Rhs as AsViewRepr<'b>>::View,
 //             Res = Res,
 //             Err = Err,
 //         >,
-//     Res: TensorRepr,
+//     Res: TensorTupleRepr<1>,
 //     Err,
 // > AddCtxImpl<Lhs, Rhs> for ConsumeAddCtx<C>
 // {
@@ -165,7 +152,7 @@ fn it_works() -> anyhow::Result<()> {
 
     //println!("{:?}", (&a_unned).norm().exec().unwrap());
     let a_mul_b = (&a * &b)?.exec()?;
-    let a_red_mul_b_red = (&a_red * &b_red)?.exec()?;
+    let a_red_mul_b_red = (&a_red * &b_red)?.with_regulated::<Nd>(())?;
     //let a_mul_b_red = a_mul_b.regulate::<LnCoeff<f64>, L2Regulator<_>>();
 
     let a_red_mul_b_red_unred = a_red_mul_b_red.into_normal_tensor();
@@ -234,7 +221,7 @@ fn it_works_add() -> anyhow::Result<()> {
 
     //println!("{:?}", (&a_unned).norm().exec().unwrap());
     let a_add_b = (&a + &b)?.exec()?;
-    let a_red_add_b_red = (&a_red + &b_red)?.exec()?;
+    let a_red_add_b_red = (&a_red + &b_red)?.with_regulated::<Nd>(())?;
     //<() as WeightedAddCtxImpl<f64, NdDenseViewRepr<f64>, f64, NdDenseViewRepr<f64>>>::weighted_add_unchecked;
 
     //let a_mul_b_red = a_mul_b.regulate::<LnCoeff<f64>, L2Regulator<_>>();
@@ -257,11 +244,14 @@ fn it_works_add() -> anyhow::Result<()> {
 fn it_works_svd() -> anyhow::Result<()> {
     let a = Tensor::<f64, _>::random(lm!["a"=>20,"b"=>30,"c"=>40]).unwrap();
 
-    let (u, s, v) = (&a).svd(ls![&"a", &"b"], "us", "sv")?.exec()?;
+    let (u, s, v) = (&a).svd(ls![&"a", &"b"], "us", "sv")?.exec()?.unpack();
 
     let a_red = a.clone().regulate::<LnCoeff<f64>, L2Regulator<_>>();
 
-    let (u_red, s_red, v_red) = (&a_red).svd(ls![&"a", &"b"], "us", "sv")?.exec()?;
+    let (u_red, s_red, v_red) = (&a_red)
+        .svd(ls![&"a", &"b"], "us", "sv")?
+        .with_regulated::<Nd>(())?
+        .unpack();
 
     let u_red_unred = u_red.into_normal_tensor();
     let s_red_unred = s_red.into_normal_tensor();
@@ -578,15 +568,15 @@ fn it_works_svd() -> anyhow::Result<()> {
 
 //     // struct ConsumeAddCtx<C>(C);
 //     // unsafe impl<
-//     //     Lhs: TensorRepr + for<'a> AsViewRepr<'a>,
-//     //     Rhs: TensorRepr + for<'a> AsViewRepr<'a>,
+//     //     Lhs: TensorTupleRepr<1> + for<'a> AsViewRepr<'a>,
+//     //     Rhs: TensorTupleRepr<1> + for<'a> AsViewRepr<'a>,
 //     //     C: for<'a, 'b> AddCtxImpl<
 //     //             <Lhs as AsViewRepr<'a>>::View,
 //     //             <Rhs as AsViewRepr<'b>>::View,
 //     //             Res = Res,
 //     //             Err = Err,
 //     //         >,
-//     //     Res: TensorRepr,
+//     //     Res: TensorTupleRepr<1>,
 //     //     Err,
 //     // > AddCtxImpl<Lhs, Rhs> for ConsumeAddCtx<C>
 //     // {

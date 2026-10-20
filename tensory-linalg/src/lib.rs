@@ -1,4 +1,6 @@
+//! Lazy and runtime linear-algebra operations for tensory.
 #![no_std]
+#![allow(clippy::type_complexity)]
 extern crate alloc;
 #[cfg(test)]
 extern crate std;
@@ -39,14 +41,14 @@ pub mod prelude {
     pub use crate::solve_eig::TensorSolveEigExt;
     pub use crate::svd::TensorSvdExt;
 
-    // pub use crate::conj::BoundTensorConjExt;
+    pub use crate::conj::BoundTensorConjExt;
     // pub use crate::det::BoundTensorDetExt;
-    // pub use crate::eig::BoundTensorEigExt;
+    pub use crate::eig::BoundTensorEigExt;
     pub use crate::exp::BoundTensorExpExt;
     // pub use crate::lu::BoundTensorLuExt;
     pub use crate::norm::BoundTensorNormExt;
     pub use crate::pow::BoundTensorPowExt;
-    // pub use crate::qr::BoundTensorQrExt;
-    // pub use crate::solve_eig::BoundTensorSolveEigExt;
+    pub use crate::qr::BoundTensorQrExt;
+    pub use crate::solve_eig::BoundTensorSolveEigExt;
     pub use crate::svd::BoundTensorSvdExt;
 }

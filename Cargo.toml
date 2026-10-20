@@ -13,7 +13,7 @@ members = [
     # internal
     "examples/*",
     # "benches"
-    "experiments/*",
+    "experiments/*", "tensory-core-test",
 ]
 exclude = ["experiments/numpy"]
 

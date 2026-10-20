@@ -4,7 +4,11 @@ use tensory_basic::{
 };
 use tensory_core::prelude::*;
 use tensory_linalg::prelude::*;
-use tensory_ndarray::{NdDenseTensor, NdDenseTensorExt, cut_filter::max_ix};
+use tensory_ndarray::{
+    NdDenseTensor, NdDenseTensorExt,
+    cut_filter::max_ix,
+    linalg::{Diag, Half},
+};
 
 type Leg = Prime<Id128>;
 type Tensor = NdDenseTensor<f64, VecMapper<Leg>>;
@@ -17,7 +21,8 @@ fn main() -> anyhow::Result<()> {
 
     let j: f64 = 1.0;
     let h: f64 = 0.0;
-    let beta: f64 = 0.381;
+    // let beta: f64 = 0.381; //
+    let beta: f64 = (1.0 + 2.0f64.sqrt()).ln() / 2.0;
 
     let mut z = Tensor::zero(lm![x=> 2, y=> 2, x.prime()=> 2, y.prime()=> 2]).unwrap();
     for x_i in 0..2 {
@@ -61,19 +66,35 @@ fn main() -> anyhow::Result<()> {
             .view()
             .replace_leg(lm![&x => x.prime(),&y => y.prime(), &x.prime() => x, &y.prime() => y])
             .unwrap())
-        .svd_with_more_ids(ls![&x, &y], x_new, x_new.prime(), dum, dum)?
-        .with(max_ix(d))?;
-        let A = u;
-        let B = (&s * &v)?.exec()?;
+        .svd_with_more_ids_and_option(ls![&x, &y], dum.prime(), dum.prime(), dum, dum, max_ix(d))?
+        .with(())?
+        .unpack();
+        let s_sqrt = (&s).pow(Half, ls![(&dum.prime(), &dum)])?.with(Diag)?;
+        let a = (&u * &s_sqrt)?.exec()?; // dum -> x_new
+        let b = (&s_sqrt * &v)?.exec()?; // dum.prime() -> x_new.prime()
+        let a = a.replace_leg(lm![&dum => x_new])?;
+        let b = b.replace_leg(lm![&dum.prime() => x_new.prime()])?;
 
         let (u, s, v) = (&z)
-            .svd_with_more_ids(ls![&x, &y.prime()], y_new, y_new.prime(), dum, dum)?
-            .with(max_ix(d))?;
+            .svd_with_more_ids_and_option(
+                ls![&x, &y.prime()],
+                dum.prime(),
+                dum.prime(),
+                dum,
+                dum,
+                max_ix(d),
+            )?
+            .with(())?
+            .unpack();
 
-        let C = u;
-        let D = (&s * &v)?.exec()?;
+        let s_sqrt = (&s).pow(Half, ls![(&dum.prime(), &dum)])?.with(Diag)?;
 
-        let z_tmp = (&(&A * &D)?.exec()? * &(&B * &C)?.exec()?)?.exec()?;
+        let c = (&u * &s_sqrt)?.exec()?; // dum -> y_new
+        let d = (&s_sqrt * &v)?.exec()?; // dum.prime() -> y_new.prime()
+        let c = c.replace_leg(lm![&dum => y_new])?;
+        let d = d.replace_leg(lm![&dum.prime() => y_new.prime()])?;
+
+        let z_tmp = (&(&a * &d)?.exec()? * &(&b * &c)?.exec()?)?.exec()?;
 
         let z_norm = (&z_tmp).norm().exec()?;
 
@@ -88,22 +109,31 @@ fn main() -> anyhow::Result<()> {
         println!("renormed norm {}", z_norm);
     }
 
-    let eye_x = Tensor::eye(lm![[x,x.prime()]=>d])?;
-    let eye_y = Tensor::eye(lm![[y,y.prime()]=>d])?;
+    let d_x = z.axis_info(0, &x)?;
+    let d_y = z.axis_info(0, &y)?;
+
+    let eye_x = Tensor::eye(lm![[x,x.prime()]=>d_x])?;
+    let eye_y = Tensor::eye(lm![[y,y.prime()]=>d_y])?;
 
     let z = (&(&z * &eye_x)?.exec()? * &eye_y)?.exec()?;
 
     coeff_log += (&z).norm().exec()?.ln();
 
     std::println!("Final tensor: {:?}", z[lm![]]);
-    std::println!(
-        "Log partition function: {}",
-        coeff_log / 2.0f64.powi((t + 1) as i32)
-    );
+
+    let body_size = 2.0f64.powi((t + 1) as i32);
+    let log_z = coeff_log / body_size;
+    std::println!("body size: {}", body_size);
+    std::println!("Log partition function: {}", log_z);
+    std::println!("free energy: {}", -log_z / beta);
 
     Ok(())
 }
 
 // rec,d,j,h,beta,lnz,f,e,c
-// 11,20,1,0,0.381,0.8592707521119247,-2.2553038113173876,-1.0112731075256898,0.6746082947341026
+// 11,20,1,0,0.381,0.85927075211192 47,-2.2553038113173876,-1.0112731075256898,0.6746082947341026
 // 11,20,1,0,0.555,1.1254365827897135,-2.027813662684168,-1.8585112245461666,0.4411754976141325
+
+// at singular
+// -2.110001060878283
+// -2.110005667037697189306$

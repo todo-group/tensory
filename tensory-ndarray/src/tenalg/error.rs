@@ -1,4 +1,3 @@
-use core::fmt::Display;
 use ndarray_linalg::error::LinalgError;
 use thiserror::Error;
 

@@ -1,102 +1,60 @@
 use alloc::vec;
 
 use tensory_core::{
-    bound_tensor::{BoundTensor, Runtime, RuntimeErr, ToBoundTensor},
-    mapper::{
-        AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, SplittyErr,
+    concept::{
+        container::{Raw, Resulting},
+        task::{Context, RuntimeErr, RuntimeFor},
     },
-    repr::TensorRepr,
-    tensor::{Tensor, TensorTask, ToTensor},
+    mapper::{DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes, SplittyErr},
+    repr::TensorTupleRepr,
+    tensor::{BoundTensor, Tensor, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
-/// Raw context of diagonalization operation: A= V*D*VC.
-///
-/// This trait is unsafe because the implementation must ensure that the list of `SvdAxisProvenance` is valid for the given tensor.
-pub unsafe trait PowCtxImpl<A: TensorRepr, E> {
-    /// The type of the result tensor representation.
-    type Res: TensorRepr;
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs power operation on the tensors `a` with the given axes put into U and the rests into V, and returns the result tensors and the provenance of each axis.
-    ///
-    /// # Safety
-    ///
-    /// the user must ensure that the axes are valid for the given tensor.
-    ///
-    /// the implementor must ensure the list of `SvdAxisProvenance` is valid for the given tensor.
-    unsafe fn pow_unchecked(
-        self,
-        a: A,
-        power: E,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<Self::Res, Self::Err>;
-}
-
-/// Safe version if `PowCtxImpl`.
-/// The blanket implementation checks input and panic if the condition is not satisfied.
-pub trait PowCtx<A: TensorRepr, E>: PowCtxImpl<A, E> {
-    /// Safe version of `pow_unchecked`.
-    fn pow(self, a: A, power: E, axes_split: EquivGroupedAxes<2>) -> Result<Self::Res, Self::Err>;
-}
-
-impl<C: PowCtxImpl<A, E>, A: TensorRepr, E> PowCtx<A, E> for C {
-    fn pow(self, a: A, power: E, axes_split: EquivGroupedAxes<2>) -> Result<Self::Res, Self::Err> {
-        if a.naxes() != axes_split.len() {
-            panic!("Incompatible tensor dimensions");
-        }
-        unsafe { self.pow_unchecked(a, power, axes_split) }
-    }
-}
+/// Lazy representation of a matrix power operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-
-pub struct TensorPow<A: TensorRepr, E, M: AxisMapper> {
+pub struct PowRepr<A: TensorTupleRepr<1>, P> {
     a: A,
-    power: E,
-    legs: M,
+    power: P,
     axes_split: EquivGroupedAxes<2>,
 }
 
-impl<A: TensorRepr, M: AxisMapper, C: PowCtx<A, E>, E> TensorTask<C> for TensorPow<A, E, M> {
-    type Output = Result<Tensor<C::Res, M>, C::Err>;
-
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
-        let axes_split = self.axes_split;
-
-        let res = unsafe { ctx.pow_unchecked(a, self.power, axes_split) }?;
-
-        Ok(unsafe { Tensor::from_raw_unchecked(res, self.legs) })
+unsafe impl<A: TensorTupleRepr<1>, P> TensorTupleRepr<1> for PowRepr<A, P> {
+    fn naxes_array(&self) -> [usize; 1] {
+        self.a.naxes_array()
     }
 }
-impl<A: TensorRepr, E, M: AxisMapper> TensorPow<A, E, M> {
-    pub unsafe fn from_raw_unchecked(
-        a: A,
-        power: E,
-        legs: M,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Self {
-        TensorPow {
+
+impl<A: TensorTupleRepr<1>, P> tensory_core::concept::task::IsTask for PowRepr<A, P> {}
+
+impl<A: TensorTupleRepr<1>, P> PowRepr<A, P> {
+    /// Creates a power representation without validating metadata.
+    ///
+    /// # Safety
+    ///
+    /// `axes_split` must describe all axes of `a`.
+    pub unsafe fn from_raw_unchecked(a: A, power: P, axes_split: EquivGroupedAxes<2>) -> Self {
+        Self {
             a,
             power,
-            legs,
             axes_split,
         }
     }
+
+    /// Decomposes the representation into its input, power, and axis metadata.
+    pub fn into_raw(self) -> (A, P, EquivGroupedAxes<2>) {
+        (self.a, self.power, self.axes_split)
+    }
 }
 
-pub trait PowRuntime<A: TensorRepr, E>: Runtime {
-    type Ctx: PowCtxImpl<A, E>;
-    fn pow_ctx(&self) -> Self::Ctx;
-}
-
+/// Lazy matrix power construction for ordinary tensors.
 pub trait TensorPowExt: ToTensor {
-    fn pow<E, Q>(
+    /// Builds a lazy power task.
+    fn pow<P, Q>(
         self,
-        power: E,
+        power: P,
         query: Q,
     ) -> Result<
-        TensorPow<Self::Repr, E, Self::Mapper>,
+        Tensor<PowRepr<Self::Repr, P>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
@@ -108,12 +66,12 @@ pub trait TensorPowExt: ToTensor {
 }
 
 impl<T: ToTensor> TensorPowExt for T {
-    fn pow<E, Q>(
+    fn pow<P, Q>(
         self,
-        power: E,
+        power: P,
         query: Q,
     ) -> Result<
-        TensorPow<Self::Repr, E, Self::Mapper>,
+        Tensor<PowRepr<Self::Repr, P>, Self::Mapper>,
         SplittyErr<
             <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
             <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
@@ -123,22 +81,30 @@ impl<T: ToTensor> TensorPowExt for T {
         Self::Mapper: EquivGroupMapper<2, Q>,
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
     {
-        let (raw, legs) = self.to_tensor().into_raw();
+        let (raw, [legs]) = self.to_tensor().into_raw();
         let (grouped, axes_split) = legs.equiv_split(query).map_err(SplittyErr::Split)?;
-        let [legs] = unsafe { grouped.decomp(DecompConf::from_raw_unchecked([0, 0], vec![])) }
+        let [mapper] = unsafe { grouped.decomp(DecompConf::from_raw_unchecked([0, 0], vec![])) }
             .map_err(SplittyErr::Use)?;
-        Ok(unsafe { TensorPow::from_raw_unchecked(raw, power, legs, axes_split) })
+        let repr = unsafe { PowRepr::from_raw_unchecked(raw, power, axes_split) };
+        Ok(unsafe { Tensor::from_raw_unchecked(repr, [mapper]) })
     }
 }
 
-pub trait BoundTensorPowExt: ToBoundTensor {
-    fn pow<E, Q>(
+/// Runtime-bound power construction and execution.
+pub trait BoundTensorPowExt: ToBoundTensorTuple<1> {
+    /// Builds and executes a power task.
+    fn pow<P, Q, E>(
         self,
-        power: E,
+        power: P,
         query: Q,
     ) -> Result<
         BoundTensor<
-            <<Self::Runtime as PowRuntime<Self::Repr, E>>::Ctx as PowCtxImpl<Self::Repr, E>>::Res,
+            <<Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Mk,
+                1,
+                PowRepr<Self::Repr, P>,
+                Self::Mapper,
+            >>::Repr,
             Self::Mapper,
             Self::Runtime,
         >,
@@ -147,23 +113,35 @@ pub trait BoundTensorPowExt: ToBoundTensor {
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
-            <<Self::Runtime as PowRuntime<Self::Repr,E>>::Ctx as PowCtxImpl<Self::Repr,E>>::Err,
+            E,
         >,
     >
     where
         Self::Mapper: EquivGroupMapper<2, Q>,
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
-        Self::Runtime: PowRuntime<Self::Repr,E>;
+        Self::Runtime: RuntimeFor<PowRepr<Self::Repr, P>>,
+        <Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Mk,
+            1,
+            PowRepr<Self::Repr, P>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >;
 }
 
-impl<T: ToBoundTensor> BoundTensorPowExt for T {
-    fn pow<E,Q>(
+impl<T: ToBoundTensorTuple<1>> BoundTensorPowExt for T {
+    fn pow<P, Q, E>(
         self,
-        power: E,
+        power: P,
         query: Q,
     ) -> Result<
         BoundTensor<
-            <<Self::Runtime as PowRuntime<Self::Repr, E>>::Ctx as PowCtxImpl<Self::Repr, E>>::Res,
+            <<Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Mk,
+                1,
+                PowRepr<Self::Repr, P>,
+                Self::Mapper,
+            >>::Repr,
             Self::Mapper,
             Self::Runtime,
         >,
@@ -172,20 +150,27 @@ impl<T: ToBoundTensor> BoundTensorPowExt for T {
                 <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
                 <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 1>>::Err,
             >,
-            <<Self::Runtime as PowRuntime<Self::Repr, E>>::Ctx as PowCtxImpl<Self::Repr, E>>::Err,
+            E,
         >,
     >
     where
         Self::Mapper: EquivGroupMapper<2, Q>,
         <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 1>,
-        Self::Runtime: PowRuntime<Self::Repr, E>,
+        Self::Runtime: RuntimeFor<PowRepr<Self::Repr, P>>,
+        <Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<PowRepr<Self::Repr, P>>>::Mk,
+            1,
+            PowRepr<Self::Repr, P>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >,
     {
-        let (a, rt) = self.to_bound_tensor().into_raw();
-
-        a.pow(power, query)
-            .map_err(RuntimeErr::Axis)?
-            .with(rt.pow_ctx())
-            .map_err(RuntimeErr::Ctx)
-            .map(|res| res.bind(rt))
+        let (tensor, runtime) = self.to_bound_tensor_tuple().into_raw();
+        let task = tensor.pow(power, query).map_err(RuntimeErr::Defer)?;
+        let result = runtime
+            .ctx()
+            .execute(task)
+            .map_err(RuntimeErr::Execute)?;
+        Ok(BoundTensor::from_raw(result, runtime))
     }
 }

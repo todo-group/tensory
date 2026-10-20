@@ -3,13 +3,22 @@ use core::marker::PhantomData;
 use ndarray::{ScalarOperand, Zip};
 use ndarray_linalg::{Lapack, Scalar};
 use tensory_core::{
-    arith::{CommutativeScalarDivCtx, CommutativeScalarMulCtx},
-    repr::AsViewRepr,
+    arith::{
+        LeftScalarDivOp, LeftScalarDivRepr, LeftScalarMulOp, LeftScalarMulRepr,
+        RightScalarDivOp, RightScalarDivRepr, RightScalarMulOp, RightScalarMulRepr,
+    },
+    concept::{
+        container::{Raw, Resulting},
+        refined::RefinedFrom,
+        task::Context,
+    },
+    op::AxisAllocation,
+    repr::{AsViewRepr, TensorRepr},
 };
-use tensory_linalg::norm::NormCtx;
+use tensory_linalg::norm::NormRepr;
 use tensory_regulated::{
+    arith::{WeightedAddCtxImpl, WeightedSubCtxImpl},
     CoefficientRepr, Inflator, Regulation, Regulator, UnpackableCoefficientRepr,
-    arith::WeightedAddCtxImpl,
 };
 
 use crate::{NdDenseRepr, NdDenseViewRepr, TenalgErr};
@@ -19,26 +28,45 @@ pub struct L2Regulator<E>(PhantomData<E>);
 unsafe impl<E> Regulation for L2Regulator<E> {
     type Scalar = E;
 }
+
 unsafe impl<E: Lapack + ScalarOperand> Regulator<NdDenseRepr<E>> for L2Regulator<E::Real> {
     type Res = NdDenseRepr<E>;
 
-    fn regulate(repr: NdDenseRepr<E>) -> (NdDenseRepr<E>, Self::Scalar) {
-        let norm = ().norm(repr.view()).unwrap(); // Infallible
-        let repr = <() as CommutativeScalarDivCtx<_, _>>::scalar_div((), repr, E::from_real(norm))
-            .unwrap();
+    fn regulate(repr: NdDenseRepr<E>) -> (Self::Res, Self::Scalar) {
+        let norm = ().execute(NormRepr::from_raw(repr.view())).unwrap();
+        let scalar = E::from_real(norm);
+        let axis_mapping = AxisAllocation::id(repr.naxes());
+        let task = unsafe {
+            RightScalarDivRepr::from_raw_unchecked((
+                repr,
+                [axis_mapping],
+                RightScalarDivOp(scalar),
+            ))
+        };
+        let repr = ().execute(task).unwrap();
         (repr, norm)
     }
 }
+
 unsafe impl<E: Lapack + ScalarOperand> Inflator<NdDenseRepr<E>> for L2Regulator<E::Real> {
     type Res = NdDenseRepr<E>;
 
     fn inflate(repr: NdDenseRepr<E>, coeff: Self::Scalar) -> Self::Res {
-        <() as CommutativeScalarMulCtx<_, _>>::scalar_mul((), repr, E::from_real(coeff)).unwrap()
+        let axis_mapping = AxisAllocation::id(repr.naxes());
+        let task = unsafe {
+            RightScalarMulRepr::from_raw_unchecked((
+                repr,
+                [axis_mapping],
+                RightScalarMulOp(E::from_real(coeff)),
+            ))
+        };
+        ().execute(task).unwrap()
     }
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub struct LnCoeff<E: Scalar>(E::Real);
+
 impl<E: Scalar> LnCoeff<E> {
     pub fn ln(self) -> E::Real {
         self.0
@@ -53,18 +81,15 @@ unsafe impl<E: Scalar> CoefficientRepr for LnCoeff<E> {
     }
 
     fn merge<const N: usize>(coeffies: [Self; N]) -> Self {
-        let ln_sum = coeffies.iter().map(|c| c.0).sum();
-        Self(ln_sum)
+        Self(coeffies.iter().map(|c| c.0).sum())
     }
 
     fn mul<const N: usize>(self, coeffs: [Self::Scalar; N]) -> Self {
-        let ln_sum = coeffs.iter().fold(self.0, |acc, &c| acc + c.ln());
-        Self(ln_sum)
+        Self(coeffs.iter().fold(self.0, |acc, &c| acc + c.ln()))
     }
 
     fn div<const N: usize>(self, coeffs: [Self::Scalar; N]) -> Self {
-        let ln_sum = coeffs.iter().fold(self.0, |acc, &c| acc - c.ln());
-        Self(ln_sum)
+        Self(coeffs.iter().fold(self.0, |acc, &c| acc - c.ln()))
     }
 
     fn factorize<const N: usize>(coeffs: [Self; N]) -> (Self, [Self::Scalar; N]) {
@@ -76,6 +101,7 @@ unsafe impl<E: Scalar> CoefficientRepr for LnCoeff<E> {
         (Self(ln_max), coeffs.map(|coeff| (coeff.0 - ln_max).exp()))
     }
 }
+
 impl<E: Scalar> UnpackableCoefficientRepr for LnCoeff<E> {
     fn unpack(self) -> Self::Scalar {
         self.0.exp()
@@ -94,59 +120,46 @@ unsafe impl<'l, 'r, E: Scalar>
         lhs: NdDenseViewRepr<'l, E>,
         rhs_coeff: E::Real,
         rhs: NdDenseViewRepr<'r, E>,
-        axis_mapping: tensory_core::mapper::OverlayAxisMapping<2>,
+        axis_mapping: AxisAllocation<2>,
     ) -> Result<Self::Res, Self::Err> {
-        let lhs_raw = lhs.into_raw();
-        let rhs_raw = rhs.into_raw();
-
         let (_, [lhs_perm, rhs_perm]) = axis_mapping.into_raw();
-
-        let lhs_raw = lhs_raw.permuted_axes(lhs_perm);
-        let rhs_raw = rhs_raw.permuted_axes(rhs_perm);
-
-        if lhs_raw.dim() == rhs_raw.dim() {
-            Ok(NdDenseRepr::from_raw(
-                Zip::from(lhs_raw)
-                    .and(rhs_raw)
-                    .map_collect(|l, r| l.mul_real(lhs_coeff) + r.mul_real(rhs_coeff)),
-            ))
-        } else {
-            Err(TenalgErr::InvalidInput)
+        let lhs = lhs.into_raw().permuted_axes(lhs_perm);
+        let rhs = rhs.into_raw().permuted_axes(rhs_perm);
+        if lhs.dim() != rhs.dim() {
+            return Err(TenalgErr::InvalidInput);
         }
+        Ok(NdDenseRepr::from_raw(
+            Zip::from(lhs)
+                .and(rhs)
+                .map_collect(|lhs, rhs| lhs.mul_real(lhs_coeff) + rhs.mul_real(rhs_coeff)),
+        ))
     }
 }
 
-// unsafe impl<'l, 'r, E: Scalar>
-//     WeightedAddCtxImplReordered<NdDenseViewRepr<'l, E>, E::Real, NdDenseViewRepr<'r, E>, E::Real>
-//     for ()
-// {
-//     type Res = NdDenseRepr<E>;
-//     type Err = TenalgErr;
+unsafe impl<'l, 'r, E: Scalar>
+    WeightedSubCtxImpl<E::Real, NdDenseViewRepr<'l, E>, E::Real, NdDenseViewRepr<'r, E>> for ()
+{
+    type Res = NdDenseRepr<E>;
+    type Err = TenalgErr;
 
-//     unsafe fn weighted_add_unchecked_r(
-//         self,
-//         lhs_coeff: E::Real,
-//         lhs: NdDenseViewRepr<'l, E>,
-//         rhs_coeff: E::Real,
-//         rhs: NdDenseViewRepr<'r, E>,
-//         axis_mapping: tensory_core::mapper::OverlayAxisMapping<2>,
-//     ) -> Result<Self::Res, Self::Err> {
-//         let lhs_raw = lhs.into_raw();
-//         let rhs_raw = rhs.into_raw();
-
-//         let (_, [lhs_perm, rhs_perm]) = axis_mapping.into_raw();
-
-//         let lhs_raw = lhs_raw.permuted_axes(lhs_perm);
-//         let rhs_raw = rhs_raw.permuted_axes(rhs_perm);
-
-//         if lhs_raw.dim() == rhs_raw.dim() {
-//             Ok(NdDenseRepr::from_raw(
-//                 Zip::from(lhs_raw)
-//                     .and(rhs_raw)
-//                     .map_collect(|l, r| l.mul_real(lhs_coeff) + r.mul_real(rhs_coeff)),
-//             ))
-//         } else {
-//             Err(TenalgErr::InvalidInput)
-//         }
-//     }
-// }
+    unsafe fn weighted_sub_unchecked(
+        self,
+        lhs_coeff: E::Real,
+        lhs: NdDenseViewRepr<'l, E>,
+        rhs_coeff: E::Real,
+        rhs: NdDenseViewRepr<'r, E>,
+        axis_mapping: AxisAllocation<2>,
+    ) -> Result<Self::Res, Self::Err> {
+        let (_, [lhs_perm, rhs_perm]) = axis_mapping.into_raw();
+        let lhs = lhs.into_raw().permuted_axes(lhs_perm);
+        let rhs = rhs.into_raw().permuted_axes(rhs_perm);
+        if lhs.dim() != rhs.dim() {
+            return Err(TenalgErr::InvalidInput);
+        }
+        Ok(NdDenseRepr::from_raw(
+            Zip::from(lhs)
+                .and(rhs)
+                .map_collect(|lhs, rhs| lhs.mul_real(lhs_coeff) - rhs.mul_real(rhs_coeff)),
+        ))
+    }
+}

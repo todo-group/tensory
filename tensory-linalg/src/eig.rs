@@ -1,175 +1,112 @@
 use alloc::vec;
 
 use tensory_core::{
+    concept::{
+        container::{Raw, Resulting},
+        task::{Context, RuntimeErr, RuntimeFor},
+    },
     mapper::{
         AxisMapper, DecompConf, DecompGroupedMapper, EquivGroupMapper, EquivGroupedAxes,
         SplittyErr,
     },
-    repr::TensorRepr,
-    tensor::{Tensor, TensorTask, ToTensor},
+    repr::TensorTupleRepr,
+    tensor::{BoundTensorTuple, TensorTuple, TensorTupleContext, ToBoundTensorTuple, ToTensor},
 };
 
-/// Raw context of diagonalization operation: A= V*D*VC.
-///
-/// This trait is unsafe because the implementation must ensure that the list of `SvdAxisProvenance` is valid for the given tensor.
-pub unsafe trait EigCtxImpl<A: TensorRepr> {
-    /// The type of the result tensor representation corresponding V.
-    type V: TensorRepr; // axis order: a, <from A for V>
-    /// The type of the result tensor representation corresponding D.
-    type D: TensorRepr; // axis order: a, b
-    /// The type of the result tensor representation corresponding VC.
-    type VC: TensorRepr; // axis order: b, <from A for VC>
-    /// The type of the error returned by the context. (considered as internal error)
-    type Err;
-
-    /// Performs SVD operation on the tensors `a` with the given axes put into U and the rests into V, and returns the result tensors and the provenance of each axis.
-    ///
-    /// # Safety
-    ///
-    /// the user must ensure that the axes are valid for the given tensor.
-    ///
-    /// the implementor must ensure the list of `SvdAxisProvenance` is valid for the given tensor.
-    unsafe fn eig_unchecked(
-        self,
-        a: A,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<(Self::V, Self::D, Self::VC), Self::Err>;
-}
-
-/// Safe version if SvdContextImpl.
-///
-/// The blanket implementation checks both input and output.
-pub trait EigCtx<A: TensorRepr>: EigCtxImpl<A> {
-    fn eig(
-        self,
-        a: A,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<(Self::V, Self::D, Self::VC), Self::Err>;
-}
-impl<C: EigCtxImpl<A>, A: TensorRepr> EigCtx<A> for C {
-    fn eig(
-        self,
-        a: A,
-        axes_split: EquivGroupedAxes<2>,
-    ) -> Result<(Self::V, Self::D, Self::VC), Self::Err> {
-        if a.naxes() != axes_split.len() {
-            panic!("Incompatible tensor dimensions");
-        }
-        unsafe { self.eig_unchecked(a, axes_split) }
-    }
-}
-
+/// Lazy representation of a diagonalization operation.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TensorEig<A: TensorRepr, M: AxisMapper> {
+pub struct EigRepr<A: TensorTupleRepr<1>> {
     a: A,
-    v_legs: M,
-    d_legs: M,
-    vc_legs: M,
     axes_split: EquivGroupedAxes<2>,
 }
 
-// pub unsafe trait SvdLegAlloc<Set>: LegAlloc {
-//     type Intermediate;
-//     fn extract(
-//         a: Self,
-//         u_legs: Set,
-//         u_us_leg: Self::Id,
-//         s_us_leg: Self::Id,
-//         s_sv_leg: Self::Id,
-//         v_sv_leg: Self::Id,
-//     ) -> (Self::Intermediate, Vec<usize>);
-//     unsafe fn merge(
-//         intermediate: Self::Intermediate,
-//         u_provenance: Vec<SvdIsometryAxisProvenance>,
-//         s_provenance: SvdSingularAxisOrder,
-//         v_provenance: Vec<SvdIsometryAxisProvenance>,
-//     ) -> (Self, Self, Self)
-//     where
-//         Self: Sized;
-// }
-
-// impl<A: TensorRepr, M: AxisMapper> TensorEig<A, M> {
-//     // pub fn new<Q>(
-//     //     a: Tensor<A, B>,
-//     //     queue: Q,
-//     //     s_us_leg: B::Id,
-//     //     s_sv_leg: B::Id,
-//     //     v_sv_leg: B::Id,
-//     // ) -> Self {
-//     //     let (raw, legs) = a.into_raw();
-
-//     //     let (intermediate, u_axes) =
-//     //         LA::extract(legs, u_legs, u_us_leg, s_us_leg, s_sv_leg, v_sv_leg);
-
-//     //     Self {
-//     //         a: raw,
-//     //         intermediate,
-//     //         u_axes: u_axes,
-//     //     }
-//     // }
-// }
-impl<A: TensorRepr, M: AxisMapper, C: EigCtx<A>> TensorTask<C> for TensorEig<A, M> {
-    type Output = Result<(Tensor<C::V, M>, Tensor<C::D, M>, Tensor<C::VC, M>), C::Err>;
-
-    fn with(self, ctx: C) -> Self::Output {
-        let a = self.a;
-        let axes_split = self.axes_split;
-
-        let (v, d, vc) = unsafe { ctx.eig_unchecked(a, axes_split) }?;
-
-        Ok((
-            unsafe { Tensor::from_raw_unchecked(v, self.v_legs) },
-            unsafe { Tensor::from_raw_unchecked(d, self.d_legs) },
-            unsafe { Tensor::from_raw_unchecked(vc, self.vc_legs) },
-        ))
+unsafe impl<A: TensorTupleRepr<1>> TensorTupleRepr<3> for EigRepr<A> {
+    fn naxes_array(&self) -> [usize; 3] {
+        let (_, [left_axes, right_axes]) = self.axes_split.clone().into_raw();
+        [left_axes.len() + 1, 2, right_axes.len() + 1]
     }
 }
 
-pub trait TensorEigExt<A: TensorRepr, M: AxisMapper>: Sized {
-    fn eig_with_more_ids<Q>(
-        self,
-        set: Q,
-        v_vd_leg: M::Id,
-        d_vd_leg: M::Id,
-        d_dvc_leg: M::Id,
-        vc_dvc_leg: M::Id,
-    ) -> Result<TensorEig<A, M>, SplittyErr<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
-    where
-        M: EquivGroupMapper<2, Q>,
-        M::Grouped: DecompGroupedMapper<2, 3>;
-    fn eig<Q>(
-        self,
-        set: Q,
-        vd_leg: M::Id,
-        dvc_leg: M::Id,
-    ) -> Result<TensorEig<A, M>, SplittyErr<M::Err, <M::Grouped as DecompGroupedMapper<2, 3>>::Err>>
-    where
-        M: EquivGroupMapper<2, Q>,
-        M::Grouped: DecompGroupedMapper<2, 3>,
-        M::Id: Clone;
+impl<A: TensorTupleRepr<1>> tensory_core::concept::task::IsTask for EigRepr<A> {}
+
+impl<A: TensorTupleRepr<1>> EigRepr<A> {
+    /// Creates an eigendecomposition representation without validating metadata.
+    ///
+    /// # Safety
+    ///
+    /// `axes_split` must describe all axes of `a`, and the enclosing tuple's
+    /// mappers must match the three output representations.
+    pub unsafe fn from_raw_unchecked(a: A, axes_split: EquivGroupedAxes<2>) -> Self {
+        Self { a, axes_split }
+    }
+
+    /// Decomposes the representation into its input and axis metadata.
+    pub fn into_raw(self) -> (A, EquivGroupedAxes<2>) {
+        (self.a, self.axes_split)
+    }
 }
 
-impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
+/// Lazy eigendecomposition construction for ordinary tensors.
+pub trait TensorEigExt: ToTensor {
+    /// Builds an eigendecomposition task with separate IDs for the bonds.
     fn eig_with_more_ids<Q>(
         self,
-        queue: Q,
-        v_vd_leg: <T::Mapper as AxisMapper>::Id,
-        d_vd_leg: <T::Mapper as AxisMapper>::Id,
-        d_dvc_leg: <T::Mapper as AxisMapper>::Id,
-        vc_dvc_leg: <T::Mapper as AxisMapper>::Id,
+        query: Q,
+        v_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_dvc_leg: <Self::Mapper as AxisMapper>::Id,
+        vc_dvc_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorEig<T::Repr, T::Mapper>,
+        TensorTuple<3, EigRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
-            <T::Mapper as EquivGroupMapper<2, Q>>::Err,
-            <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+            <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
     >
     where
-        T::Mapper: EquivGroupMapper<2, Q>,
-        <T::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>;
+
+    /// Builds an eigendecomposition task using one shared ID for each bond.
+    fn eig<Q>(
+        self,
+        query: Q,
+        vd_leg: <Self::Mapper as AxisMapper>::Id,
+        dvc_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        TensorTuple<3, EigRepr<Self::Repr>, Self::Mapper>,
+        SplittyErr<
+            <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+            <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+        >,
+    >
+    where
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        <Self::Mapper as AxisMapper>::Id: Clone;
+}
+
+impl<T: ToTensor> TensorEigExt for T {
+    fn eig_with_more_ids<Q>(
+        self,
+        query: Q,
+        v_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_dvc_leg: <Self::Mapper as AxisMapper>::Id,
+        vc_dvc_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        TensorTuple<3, EigRepr<Self::Repr>, Self::Mapper>,
+        SplittyErr<
+            <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+            <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+        >,
+    >
+    where
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
     {
-        let (raw, legs) = self.to_tensor().into_raw();
-        let (grouped, axes_split) = legs.equiv_split(queue).map_err(SplittyErr::Split)?;
+        let (raw, [legs]) = self.to_tensor().into_raw();
+        let (grouped, axes_split) = legs.equiv_split(query).map_err(SplittyErr::Split)?;
         let [vc_legs, d_legs, v_legs] = unsafe {
             grouped.decomp(DecompConf::from_raw_unchecked(
                 [0, 2],
@@ -180,31 +117,202 @@ impl<T: ToTensor> TensorEigExt<T::Repr, T::Mapper> for T {
             ))
         }
         .map_err(SplittyErr::Use)?;
-        Ok(TensorEig {
-            a: raw,
-            v_legs: vc_legs,
-            d_legs,
-            vc_legs: v_legs,
-            axes_split,
-        })
+        let repr = unsafe { EigRepr::from_raw_unchecked(raw, axes_split) };
+        Ok(unsafe { TensorTuple::from_raw_unchecked(repr, [vc_legs, d_legs, v_legs]) })
     }
+
     fn eig<Q>(
         self,
-        set: Q,
-        vd_leg: <T::Mapper as AxisMapper>::Id,
-        dvc_leg: <T::Mapper as AxisMapper>::Id,
+        query: Q,
+        vd_leg: <Self::Mapper as AxisMapper>::Id,
+        dvc_leg: <Self::Mapper as AxisMapper>::Id,
     ) -> Result<
-        TensorEig<T::Repr, T::Mapper>,
+        TensorTuple<3, EigRepr<Self::Repr>, Self::Mapper>,
         SplittyErr<
-            <T::Mapper as EquivGroupMapper<2, Q>>::Err,
-            <<T::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+            <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
         >,
     >
     where
-        T::Mapper: EquivGroupMapper<2, Q>,
-        <T::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
-        <T::Mapper as AxisMapper>::Id: Clone,
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
     {
-        self.eig_with_more_ids(set, vd_leg.clone(), vd_leg, dvc_leg.clone(), dvc_leg)
+        self.eig_with_more_ids(query, vd_leg.clone(), vd_leg, dvc_leg.clone(), dvc_leg)
+    }
+}
+
+/// Runtime-bound eigendecomposition construction and execution.
+pub trait BoundTensorEigExt: ToBoundTensorTuple<1> {
+    /// Builds and executes an eigendecomposition with separate bond IDs.
+    fn eig_with_more_ids<Q, E>(
+        self,
+        query: Q,
+        v_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_dvc_leg: <Self::Mapper as AxisMapper>::Id,
+        vc_dvc_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            3,
+            <<Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+                3,
+                EigRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+                <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        Self::Runtime: RuntimeFor<EigRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+            3,
+            EigRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >;
+
+    /// Builds and executes an eigendecomposition using shared bond IDs.
+    fn eig<Q, E>(
+        self,
+        query: Q,
+        vd_leg: <Self::Mapper as AxisMapper>::Id,
+        dvc_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            3,
+            <<Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+                3,
+                EigRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+                <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
+        Self::Runtime: RuntimeFor<EigRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+            3,
+            EigRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >;
+}
+
+impl<T: ToBoundTensorTuple<1>> BoundTensorEigExt for T {
+    fn eig_with_more_ids<Q, E>(
+        self,
+        query: Q,
+        v_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_vd_leg: <Self::Mapper as AxisMapper>::Id,
+        d_dvc_leg: <Self::Mapper as AxisMapper>::Id,
+        vc_dvc_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            3,
+            <<Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+                3,
+                EigRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+                <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        Self::Runtime: RuntimeFor<EigRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+            3,
+            EigRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >,
+    {
+        let (a, runtime) = self.to_bound_tensor_tuple().into_raw();
+        let task = a
+            .eig_with_more_ids(query, v_vd_leg, d_vd_leg, d_dvc_leg, vc_dvc_leg)
+            .map_err(RuntimeErr::Defer)?;
+        let result = runtime
+            .ctx()
+            .execute(task)
+            .map_err(RuntimeErr::Execute)?;
+        Ok(BoundTensorTuple::from_raw(result, runtime))
+    }
+
+    fn eig<Q, E>(
+        self,
+        query: Q,
+        vd_leg: <Self::Mapper as AxisMapper>::Id,
+        dvc_leg: <Self::Mapper as AxisMapper>::Id,
+    ) -> Result<
+        BoundTensorTuple<
+            3,
+            <<Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx as TensorTupleContext<
+                <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+                3,
+                EigRepr<Self::Repr>,
+                Self::Mapper,
+            >>::Repr,
+            Self::Mapper,
+            Self::Runtime,
+        >,
+        RuntimeErr<
+            SplittyErr<
+                <Self::Mapper as EquivGroupMapper<2, Q>>::Err,
+                <<Self::Mapper as EquivGroupMapper<2, Q>>::Grouped as DecompGroupedMapper<2, 3>>::Err,
+            >,
+            E,
+        >,
+    >
+    where
+        Self::Mapper: EquivGroupMapper<2, Q>,
+        <Self::Mapper as EquivGroupMapper<2, Q>>::Grouped: DecompGroupedMapper<2, 3>,
+        <Self::Mapper as AxisMapper>::Id: Clone,
+        Self::Runtime: RuntimeFor<EigRepr<Self::Repr>>,
+        <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Ctx: TensorTupleContext<
+            <Self::Runtime as RuntimeFor<EigRepr<Self::Repr>>>::Mk,
+            3,
+            EigRepr<Self::Repr>,
+            Self::Mapper,
+            CType = Resulting<Raw, E>,
+        >,
+    {
+        self.eig_with_more_ids(query, vd_leg.clone(), vd_leg, dvc_leg.clone(), dvc_leg)
     }
 }

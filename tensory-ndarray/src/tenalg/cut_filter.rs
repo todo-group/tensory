@@ -69,7 +69,10 @@ where
         let mut sq_pre = <SS::Elem as Scalar>::Real::ZERO;
         for i in 0..s_vec.len() {
             let sq = s_vec[i].square();
-            if !(sq >= <SS::Elem as Scalar>::Real::ZERO) {
+            if sq
+                .partial_cmp(&<SS::Elem as Scalar>::Real::ZERO)
+                .is_none_or(|ordering| ordering.is_lt())
+            {
                 // negative or nan sing
                 return Err(TenalgErr::InvalidResult);
             } else if i != 0 && sq_pre < sq {

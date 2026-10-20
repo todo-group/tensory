@@ -10,7 +10,7 @@ use tensory_ndarray::{
     regulated::{L2Regulator, LnCoeff},
 };
 use tensory_regulated::{
-    RegulatedTensorExt, TensorDefaultRegulatedTask, TensorRegulatedTask, ToRegulatedTensorExt,
+    RegulatedTensorExt, TensorRegulatedTask, ToRegulatedTensorExt,
 };
 
 type Leg = Prime<Id128>;
@@ -63,31 +63,37 @@ fn main() -> anyhow::Result<()> {
             .replace_leg(lm![&x => x.prime(),&y => y.prime(), &x.prime() => x, &y.prime() => y])
             .unwrap())
         .svd_with_more_ids(ls![&x, &y], x_new, x_new.prime(), dum, dum)?
-        .with_regulated(max_ix(d))?;
-        let A = u;
-        let B = (&s * &v)?.exec()?;
+        .with_regulated(max_ix(d))?
+        .unpack();
+        let a = u;
+        let b = (&s * &v)?.with_regulated::<tensory_ndarray::Nd>(())?;
 
         let (u, s, v) = (&z)
             .svd_with_more_ids(ls![&x, &y.prime()], y_new, y_new.prime(), dum, dum)?
-            .with_regulated(max_ix(d))?;
+            .with_regulated(max_ix(d))?
+            .unpack();
 
-        let C = u;
-        let D = (&s * &v)?.exec()?;
+        let c = u;
+    let d = (&s * &v)?.with_regulated::<tensory_ndarray::Nd>(())?;
 
         // bound tensor should provide common single runtime const reference
         // and options are passed in first call fn
         // then convert it to the pair of runtime and option
         // this tuple should impl XxxCtx
 
-        z = (&(&A * &D)?.exec()? * &(&B * &C)?.exec()?)?.exec()?;
+        z = (&(&a * &d)?.with_regulated::<tensory_ndarray::Nd>(())?
+            * &(&b * &c)?.with_regulated::<tensory_ndarray::Nd>(())?)?
+            .with_regulated::<tensory_ndarray::Nd>(())?;
 
         x = x_new;
         y = y_new;
 
-        let eye_x = Tensor::eye(lm![[x,x.prime()]=>z.axis_info(&x).unwrap()])?.regulate();
-        let eye_y = Tensor::eye(lm![[y,y.prime()]=>z.axis_info(&y).unwrap()])?.regulate();
+        let eye_x = Tensor::eye(lm![[x,x.prime()]=>z.axis_info(0, &x).unwrap()])?.regulate();
+        let eye_y = Tensor::eye(lm![[y,y.prime()]=>z.axis_info(0, &y).unwrap()])?.regulate();
 
-        let z_core = (&(&z * &eye_x)?.exec()? * &eye_y)?.exec()?;
+        let z_core = (&(&z * &eye_x)?.with_regulated::<tensory_ndarray::Nd>(())?
+            * &eye_y)?
+            .with_regulated::<tensory_ndarray::Nd>(())?;
         let (z_core, coeff) = z_core.into_inner_tensor();
 
         std::println!(

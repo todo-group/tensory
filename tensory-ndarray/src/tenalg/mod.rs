@@ -235,7 +235,7 @@ where
     let left_full_ix: usize = left_ixs.iter().product();
     let right_full_ix: usize = right_ixs.iter().product();
 
-    let x_mat = ten_to_mat(&x, [left_full_ix, right_full_ix])?;
+    let x_mat = ten_to_mat(x, [left_full_ix, right_full_ix])?;
 
     let (q_mat, r_mat) = x_mat.qr()?;
 

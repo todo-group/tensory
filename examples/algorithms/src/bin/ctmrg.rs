@@ -1,4 +1,3 @@
-use num_complex::Complex;
 use tensory_basic::{
     id::{Id128, Prime},
     mapper::VecMapper,
@@ -26,7 +25,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut el: Leg = Leg::new();
     let mut er: Leg = Leg::new();
-    let mut ea: Leg = Leg::new();
+    let ea: Leg = Leg::new();
 
     let mut a = Tensor::zero(lm![l=> 2, t=> 2, r=> 2, b=> 2]).unwrap();
     let mut spin_a = Tensor::zero(lm![l=> 2, t=> 2, r=> 2, b=> 2]).unwrap();
@@ -59,9 +58,10 @@ fn main() -> anyhow::Result<()> {
 
     // normalization
     let dummy = Leg::new();
-    let (u, s, v) = (&a)
-        .svd(ls![&l, &t], dummy, dummy.prime())?
-        .with(max_ix(4))?;
+    let (_u, s, _v) = (&a)
+        .svd_with_option(ls![&l, &t], dummy, dummy.prime(), max_ix(4))?
+        .with(())?
+        .unpack();
     let factor_initial = s[lm![&dummy=>0,&dummy.prime()=>0]]
         + s[lm![&dummy=>1,&dummy.prime()=>1]]
         + s[lm![&dummy=>2,&dummy.prime()=>2]]
@@ -132,10 +132,11 @@ fn main() -> anyhow::Result<()> {
         let mat = (&ece.replace_leg(lm![&ea => l, &ea.prime() => t]).unwrap() * &a)?.exec()?;
 
         let el_new = Leg::new();
-        let (u, s, v) = (&mat)
+        let (u, s, _v) = mat
             .view()
-            .svd(ls![&el, &b], el_new, el_new.prime())?
-            .with(max_ix(d))?;
+            .svd_with_option(ls![&el, &b], el_new, el_new.prime(), max_ix(d))?
+            .with(())?
+            .unpack();
 
         c = (&((&mat * &u)?.exec()?)
             .replace_leg(lm![&er.prime().prime() => el, &r => b, &el_new => el_new.prime()])
@@ -173,7 +174,7 @@ fn main() -> anyhow::Result<()> {
         let c2 = (&c * &cp.replace_leg(lm![&el => el.prime(), &er => el]).unwrap())?.exec()?;
         let c4 = (&c2 * &c2)?.exec()?;
 
-        let L1 = 2 * (_rgstep + 2);
+        let l1 = 2 * (_rgstep + 2);
         let sum_f = c4[lm![]];
 
         let factors_sum: f64 = factors.iter().sum();
@@ -182,10 +183,10 @@ fn main() -> anyhow::Result<()> {
         let a_factor = (2.0 * (1.0 / temperature).exp()).ln();
         let free_energy_density = -temperature
             * (4.0 * (factors_sum + 2.0 * (e_factors_sum - e_final)) + sum_f.ln()
-                - (2 * L1 * (L1 - 1)) as f64 * a_factor
-                + (L1 * L1) as f64 * factor_initial.ln())
-            / (L1 * L1) as f64;
-        println!("Free energy density for L {}: {}", L1, free_energy_density);
+                - (2 * l1 * (l1 - 1)) as f64 * a_factor
+                + (l1 * l1) as f64 * factor_initial.ln())
+            / (l1 * l1) as f64;
+        println!("Free energy density for L {}: {}", l1, free_energy_density);
 
         if _rgstep > 0 {
             let delta_e = e_factors[_rgstep] - e_factors[_rgstep - 1];
