@@ -175,7 +175,7 @@ fn main() -> anyhow::Result<()> {
     {
         let t = Tensor::<f64>::random_using(lm![a=>a_n, b=>b_n, c=>c_n, d=>d_n], &mut rng)?; // [a,b,c,d]
         let (u, s, v_dagger) = (&t)
-            .svd_with_option(ls![&a, &b], e, f, max_ix(10))?
+            .svd_with_option(ls![&a, &b], e, f, ())?
             .exec()?
             .unpack(); // u:[a,b,e], s:[e,f], v:[f,c,d]
         let t_reconstructed = (&(&u * &s)?.exec()? * &v_dagger)?.exec()?; // [a,b,c,d]
