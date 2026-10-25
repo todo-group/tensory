@@ -48,9 +48,10 @@
             })
             pkgs-dev.cargo-edit
             # for openblas
-            pkgs-dev.openblas
+            # for openblas 32-bit
+            (pkgs-dev.openblas.override { blas64 = false; })
             # for openblas 64-bit
-            # (pkgs.openblas.override { blas64 = true; })
+            #pkgs-dev.openblas.override { blas64 = true; })
 
             # for blis (not checked yet)
             # pkgs.blis
