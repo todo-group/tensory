@@ -9,8 +9,11 @@ edition = { workspace = true }
 links = "linalg-backend"
 
 [dependencies]
+cblas-sys = { version = "*", features = ["blas-src"] }
+lapack-sys = { version = "*", features = ["blas-src"] }
+
 blas-src = { workspace = true, features = ["openblas"] }
-openblas-src = { version = "*", features = ["system"] }
+openblas-src = { version = "*", features = ["pkg-config"] }
 
 # blas-src = { workspace = true, features = ["accelerate"] }
 # # accelerate-src is not needed since no option
