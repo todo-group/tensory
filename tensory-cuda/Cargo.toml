@@ -9,3 +9,9 @@ edition = { workspace = true }
 [dependencies]
 cudarc = { workspace = true, features = ["cuda-version-from-build-system","dynamic-linking"] }
 tensory-core = { workspace = true }
+num-traits = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tensory-basic = { workspace = true }
+anyhow = { workspace = true }
