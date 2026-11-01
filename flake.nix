@@ -34,6 +34,7 @@
         };
         pkgs-dev = import nixpkgs {
           inherit system;
+          config.allowUnfree = true;
           overlays = [
             rust-overlay.overlays.default
           ];
@@ -70,6 +71,8 @@
             pkgs-dev.uv
             pkgs-dev.python313
             pkgs-dev.sccache
+
+            pkgs-dev.cudaPackages.cudatoolkit
           ];
         };
       }

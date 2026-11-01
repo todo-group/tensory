@@ -1,0 +1,11 @@
+[package]
+name = "tensory-cuda"
+version = { workspace = true }
+repository = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+cudarc = { workspace = true, features = ["cuda-version-from-build-system","dynamic-linking"] }
+tensory-core = { workspace = true }

@@ -6,6 +6,7 @@ members = [
     "tensory-ndarray",
     "tensory-basic",
     "tensory-regulated",
+    "tensory-cuda",
 
     # test deps
     "lin-dev-deps",
@@ -35,6 +36,8 @@ tensory-regulated = { path = "tensory-regulated" }
 
 lin-dev-deps = { path = "lin-dev-deps" }
 lin-dev-deps-build = { path = "lin-dev-deps-build" }
+
+cudarc = "0.19.10"
 
 thiserror = "2.0.18"
 anyhow = "1.0.101"
