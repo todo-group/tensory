@@ -1,34 +1,32 @@
 use tensory_core::{
-    arith::MulRepr,
+    arith::{AddRepr, MulRepr, SubRepr},
     concept::{
         container::{Raw, Resulting},
         refined::RefinedFrom,
         task::{Context, RuntimeFor},
     },
+    op::AxisAllocation,
     repr::ReprContext,
 };
 
 use crate::{
-    Cuda, CudaDenseRepr, CudaDenseViewRepr, CudaErr, CudaRuntime, CudaScalar, contiguous_strides,
-    is_contiguous,
+    Cuda, CudaDenseRepr, CudaDenseViewRepr, CudaErr, CudaRuntime, CudaScalar, cutensor::Operand,
 };
 
-impl<'l, 'r, E: CudaScalar>
-    Context<Cuda, MulRepr<1, CudaDenseViewRepr<'l, E>, CudaDenseViewRepr<'r, E>>> for CudaRuntime
-{
+type Mul<'l, 'r, E> = MulRepr<1, CudaDenseViewRepr<'l, E>, CudaDenseViewRepr<'r, E>>;
+type Add<'l, 'r, E> = AddRepr<1, CudaDenseViewRepr<'l, E>, CudaDenseViewRepr<'r, E>>;
+type Sub<'l, 'r, E> = SubRepr<1, CudaDenseViewRepr<'l, E>, CudaDenseViewRepr<'r, E>>;
+
+impl<'l, 'r, E: CudaScalar> Context<Cuda, Mul<'l, 'r, E>> for CudaRuntime {
     type Output = Result<CudaDenseRepr<E>, CudaErr>;
 
-    fn execute(
-        self,
-        task: MulRepr<1, CudaDenseViewRepr<'l, E>, CudaDenseViewRepr<'r, E>>,
-    ) -> Self::Output {
+    fn execute(self, task: Mul<'l, 'r, E>) -> Self::Output {
         let (lhs, rhs, [connection], _) = task.into_raw();
         let ([lhs_dim, rhs_dim], pairs) = connection.into_raw();
 
-        let mut lhs_conn = Vec::with_capacity(pairs.len());
-        let mut rhs_conn = Vec::with_capacity(pairs.len());
-        let mut lhs_used = vec![false; lhs_dim];
-        let mut rhs_used = vec![false; rhs_dim];
+        // Each axis gets a unique mode label; connected axes share the lhs label.
+        let lhs_modes: Vec<i32> = (0..lhs_dim as i32).collect();
+        let mut rhs_modes: Vec<i32> = (lhs_dim as i32..(lhs_dim + rhs_dim) as i32).collect();
         for &((t1, i1), (t2, i2)) in &pairs {
             let (l, r) = match (t1, t2) {
                 (0, 1) => (i1, i2),
@@ -38,77 +36,127 @@ impl<'l, 'r, E: CudaScalar>
             if lhs.shape[l] != rhs.shape[r] {
                 return Err(CudaErr::InvalidInput);
             }
-            lhs_conn.push(l);
-            rhs_conn.push(r);
-            lhs_used[l] = true;
-            rhs_used[r] = true;
+            rhs_modes[r] = lhs_modes[l];
         }
-        let lhs_free = (0..lhs_dim).filter(|&i| !lhs_used[i]);
-        let rhs_free = (0..rhs_dim).filter(|&i| !rhs_used[i]);
 
-        // Matrix layouts: lhs is (free, conn), rhs is (conn, free).
-        let lhs_perm: Vec<usize> = lhs_free.clone().chain(lhs_conn).collect();
-        let rhs_perm: Vec<usize> = rhs_conn.into_iter().chain(rhs_free.clone()).collect();
-        let permute = |v: &[usize], perm: &[usize]| perm.iter().map(|&i| v[i]).collect::<Vec<_>>();
-        let lhs_shape = permute(&lhs.shape, &lhs_perm);
-        let rhs_shape = permute(&rhs.shape, &rhs_perm);
-        let lhs_strides = permute(&lhs.strides, &lhs_perm);
-        let rhs_strides = permute(&rhs.strides, &rhs_perm);
-
-        let nconn = pairs.len();
-        let m: usize = lhs_shape[..lhs_shape.len() - nconn].iter().product();
-        let k: usize = lhs_shape[lhs_shape.len() - nconn..].iter().product();
-        let n: usize = rhs_shape[nconn..].iter().product();
-
-        let out_shape: Vec<usize> = lhs_free
-            .map(|i| lhs.shape[i])
-            .chain(rhs_free.map(|i| rhs.shape[i]))
-            .collect();
-        let out_strides = contiguous_strides(&out_shape);
-
-        let mut out = self.stream().alloc_zeros::<E>(m * n)?;
-        if m * n != 0 && k != 0 {
-            let lhs_tmp = if is_contiguous(&lhs_shape, &lhs_strides) {
-                None
-            } else {
-                Some(self.gather(lhs.data, &lhs_shape, &lhs_strides)?)
-            };
-            let rhs_tmp = if is_contiguous(&rhs_shape, &rhs_strides) {
-                None
-            } else {
-                Some(self.gather(rhs.data, &rhs_shape, &rhs_strides)?)
-            };
-            E::gemm(
-                &self.blas,
-                m,
-                n,
-                k,
-                lhs_tmp.as_ref().unwrap_or(lhs.data),
-                rhs_tmp.as_ref().unwrap_or(rhs.data),
-                &mut out,
-            )?;
+        let mut out_shape = Vec::new();
+        let mut out_modes = Vec::new();
+        for (i, &m) in lhs_modes.iter().enumerate() {
+            if !rhs_modes.contains(&m) {
+                out_shape.push(lhs.shape[i]);
+                out_modes.push(m);
+            }
         }
-        Ok(CudaDenseRepr::from_raw_layout(out, out_shape, out_strides))
+        for (i, &m) in rhs_modes.iter().enumerate() {
+            if !lhs_modes.contains(&m) {
+                out_shape.push(rhs.shape[i]);
+                out_modes.push(m);
+            }
+        }
+
+        self.contract(
+            Operand {
+                data: lhs.data,
+                shape: &lhs.shape,
+                strides: &lhs.strides,
+                modes: lhs_modes,
+            },
+            Operand {
+                data: rhs.data,
+                shape: &rhs.shape,
+                strides: &rhs.strides,
+                modes: rhs_modes,
+            },
+            out_shape,
+            &out_modes,
+        )
     }
 }
 
-unsafe impl<'l, 'r, E: CudaScalar>
-    ReprContext<Cuda, 1, MulRepr<1, CudaDenseViewRepr<'l, E>, CudaDenseViewRepr<'r, E>>>
-    for CudaRuntime
-{
-    type Repr = CudaDenseRepr<E>;
-    type CType = Resulting<Raw, CudaErr>;
+/// Computes `lhs + gamma * rhs`, permuting both operands onto the result axes.
+fn add_scaled<E: CudaScalar>(
+    rt: &CudaRuntime,
+    lhs: CudaDenseViewRepr<'_, E>,
+    rhs: CudaDenseViewRepr<'_, E>,
+    mapping: AxisAllocation<2>,
+    rhs_coeff: E,
+) -> Result<CudaDenseRepr<E>, CudaErr> {
+    let (_, [lhs_perm, rhs_perm]) = mapping.into_raw();
+
+    // Result axis j is axis `perm[j]` of the input, so that input axis gets label j.
+    let modes_of = |perm: &[usize]| {
+        let mut modes = vec![0i32; perm.len()];
+        for (j, &p) in perm.iter().enumerate() {
+            modes[p] = j as i32;
+        }
+        modes
+    };
+    let out_shape: Vec<usize> = lhs_perm.iter().map(|&p| lhs.shape[p]).collect();
+    let rhs_shape: Vec<usize> = rhs_perm.iter().map(|&p| rhs.shape[p]).collect();
+    if out_shape != rhs_shape {
+        return Err(CudaErr::InvalidInput);
+    }
+
+    // The output keeps lhs's axis order; the result order is a stride permutation.
+    let out = rt.add_scaled(
+        Operand {
+            data: rhs.data,
+            shape: &rhs.shape,
+            strides: &rhs.strides,
+            modes: modes_of(&rhs_perm),
+        },
+        rhs_coeff,
+        Operand {
+            data: lhs.data,
+            shape: &lhs.shape,
+            strides: &lhs.strides,
+            modes: modes_of(&lhs_perm),
+        },
+        E::ONE,
+    )?;
+    let (data, shape, strides) = out.into_raw();
+    Ok(CudaDenseRepr::from_raw_layout(
+        data,
+        lhs_perm.iter().map(|&p| shape[p]).collect(),
+        lhs_perm.iter().map(|&p| strides[p]).collect(),
+    ))
 }
 
-impl<'l, 'r, E: CudaScalar>
-    RuntimeFor<MulRepr<1, CudaDenseViewRepr<'l, E>, CudaDenseViewRepr<'r, E>>> for CudaRuntime
-{
-    type Mk = Cuda;
-    type Ctx = CudaRuntime;
-    fn ctx(&self) -> Self::Ctx {
-        self.clone()
+impl<'l, 'r, E: CudaScalar> Context<Cuda, Add<'l, 'r, E>> for CudaRuntime {
+    type Output = Result<CudaDenseRepr<E>, CudaErr>;
+
+    fn execute(self, task: Add<'l, 'r, E>) -> Self::Output {
+        let (lhs, rhs, [mapping], _) = task.into_raw();
+        add_scaled(&self, lhs, rhs, mapping, E::ONE)
     }
 }
+
+impl<'l, 'r, E: CudaScalar> Context<Cuda, Sub<'l, 'r, E>> for CudaRuntime {
+    type Output = Result<CudaDenseRepr<E>, CudaErr>;
+
+    fn execute(self, task: Sub<'l, 'r, E>) -> Self::Output {
+        let (lhs, rhs, [mapping], _) = task.into_raw();
+        add_scaled(&self, lhs, rhs, mapping, -E::ONE)
+    }
+}
+
+macro_rules! impl_runtime {
+    ($($task:ident),*) => {$(
+        unsafe impl<'l, 'r, E: CudaScalar> ReprContext<Cuda, 1, $task<'l, 'r, E>> for CudaRuntime {
+            type Repr = CudaDenseRepr<E>;
+            type CType = Resulting<Raw, CudaErr>;
+        }
+
+        impl<'l, 'r, E: CudaScalar> RuntimeFor<$task<'l, 'r, E>> for CudaRuntime {
+            type Mk = Cuda;
+            type Ctx = CudaRuntime;
+            fn ctx(&self) -> Self::Ctx {
+                self.clone()
+            }
+        }
+    )*};
+}
+impl_runtime!(Mul, Add, Sub);
 
 #[cfg(test)]
 mod tests {
@@ -118,12 +166,12 @@ mod tests {
     };
     use tensory_core::prelude::*;
 
-    use crate::{CudaDenseTensor, CudaDenseTensorExt, CudaRuntime};
+    use crate::{CudaDenseRepr, CudaDenseTensor, CudaDenseTensorExt, CudaRuntime};
 
     type Leg = Prime<Id128>;
     type Tensor = CudaDenseTensor<f32, VecMapper<Leg>>;
 
-    // Requires a GPU.
+    // Requires a GPU and cuTENSOR.
     #[test]
     #[ignore]
     fn tensor_mul_test() -> Result<(), anyhow::Error> {
@@ -138,9 +186,7 @@ mod tests {
         let ta = Tensor::from_host(rt.stream(), lm![a => a_n, i => i_n, j => j_n], &ta_data)?;
         let tb = Tensor::from_host(rt.stream(), lm![j => j_n, b => b_n, i => i_n], &tb_data)?;
 
-        let ta = ta.bind(rt.clone());
-        let tb = tb.bind(rt);
-        let tc = (&ta * &tb)?.unbind();
+        let tc = (&ta * &tb)?.with(rt)?;
 
         let mut expected = vec![0f32; a_n * b_n];
         for ai in 0..a_n {
@@ -154,6 +200,81 @@ mod tests {
             }
         }
         assert_eq!(tc.repr().to_host()?, expected);
+        Ok(())
+    }
+
+    // Requires a GPU and cuTENSOR.
+    #[test]
+    #[ignore]
+    fn tensor_add_sub_test() -> Result<(), anyhow::Error> {
+        let (a_n, b_n, c_n) = (2usize, 3usize, 4usize);
+        let (a, b, c) = (Leg::new(), Leg::new(), Leg::new());
+
+        let ta_data: Vec<f32> = (0..a_n * b_n * c_n).map(|x| x as f32).collect();
+        let tb_data: Vec<f32> = (0..c_n * a_n * b_n).map(|x| (x * x % 11) as f32).collect();
+
+        let rt = CudaRuntime::new(0)?;
+        let ta = Tensor::from_host(rt.stream(), lm![a => a_n, b => b_n, c => c_n], &ta_data)?;
+        // Same legs in a different axis order.
+        let tb = Tensor::from_host(rt.stream(), lm![c => c_n, a => a_n, b => b_n], &tb_data)?;
+
+        let sum = (&ta + &tb)?.with(rt.clone())?;
+        let diff = (&ta - &tb)?.with(rt)?;
+
+        let at = |ai: usize, bi: usize, ci: usize| {
+            (
+                ta_data[(ai * b_n + bi) * c_n + ci],
+                tb_data[(ci * a_n + ai) * b_n + bi],
+            )
+        };
+        let mut sum_expected = Vec::new();
+        let mut diff_expected = Vec::new();
+        // Result axes follow the lhs order (a, b, c).
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                for ci in 0..c_n {
+                    let (x, y) = at(ai, bi, ci);
+                    sum_expected.push(x + y);
+                    diff_expected.push(x - y);
+                }
+            }
+        }
+        assert_eq!(sum.repr().to_host()?, sum_expected);
+        assert_eq!(diff.repr().to_host()?, diff_expected);
+        Ok(())
+    }
+
+    // Requires a GPU and cuTENSOR.
+    #[test]
+    #[ignore]
+    fn tensor_add_keeps_lhs_memory_order() -> Result<(), anyhow::Error> {
+        let (a_n, b_n) = (2usize, 3usize);
+        let (a, b) = (Leg::new(), Leg::new());
+
+        // lhs is a column-major (a, b) matrix; rhs is row-major.
+        let lhs_data: Vec<f32> = (0..a_n * b_n).map(|x| x as f32).collect(); // [b][a]
+        let rhs_data: Vec<f32> = (0..a_n * b_n).map(|x| (10 * x) as f32).collect(); // [a][b]
+
+        let rt = CudaRuntime::new(0)?;
+        let rhs = Tensor::from_host(rt.stream(), lm![a => a_n, b => b_n], &rhs_data)?;
+        let lhs_repr = CudaDenseRepr::from_raw_layout(
+            rt.stream().clone_htod(&lhs_data)?,
+            vec![a_n, b_n],
+            vec![1, a_n],
+        );
+        let mapper = rhs.mapper_array()[0].clone();
+        let lhs = unsafe { Tensor::from_raw_unchecked(lhs_repr, [mapper]) };
+
+        let sum = (&lhs + &rhs)?.with(rt)?;
+
+        assert_eq!(sum.repr().strides(), [1, a_n]);
+        let mut expected = Vec::new();
+        for ai in 0..a_n {
+            for bi in 0..b_n {
+                expected.push(lhs_data[bi * a_n + ai] + rhs_data[ai * b_n + bi]);
+            }
+        }
+        assert_eq!(sum.repr().to_host()?, expected);
         Ok(())
     }
 }

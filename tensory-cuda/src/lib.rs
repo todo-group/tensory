@@ -1,7 +1,10 @@
 //! cudarc backed dense tensor representation, mirroring `tensory-ndarray`.
 
 pub mod arith;
+mod cutensor;
 pub mod naive;
+#[cfg(test)]
+mod naive_cutensor;
 mod runtime;
 mod scalar;
 
@@ -57,6 +60,19 @@ pub(crate) fn contiguous_strides(shape: &[usize]) -> Vec<usize> {
         acc *= s;
     }
     strides
+}
+
+/// Dense strides with the same memory order of axes as `strides`.
+pub(crate) fn dense_strides_like(shape: &[usize], strides: &[usize]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..shape.len()).collect();
+    order.sort_by_key(|&i| std::cmp::Reverse(strides[i]));
+    let mut out = vec![0; shape.len()];
+    let mut acc = 1;
+    for &i in order.iter().rev() {
+        out[i] = acc;
+        acc *= shape[i];
+    }
+    out
 }
 
 pub(crate) fn is_contiguous(shape: &[usize], strides: &[usize]) -> bool {
