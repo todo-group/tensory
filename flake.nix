@@ -73,6 +73,7 @@
             pkgs-dev.sccache
 
             pkgs-dev.cudaPackages.cudatoolkit
+            pkgs-dev.cudaPackages.libcutensor
           ];
         };
       }
