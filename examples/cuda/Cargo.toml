@@ -1,0 +1,11 @@
+[package]
+name = "cuda-example"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+tensory-core = { workspace = true }
+tensory-basic = { workspace = true }
+tensory-cuda = { workspace = true }
+
+anyhow = { workspace = true }

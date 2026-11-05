@@ -33,6 +33,7 @@ tensory-basic = { path = "tensory-basic" }
 tensory-linalg = { path = "tensory-linalg" }
 tensory-ndarray = { path = "tensory-ndarray" }
 tensory-regulated = { path = "tensory-regulated" }
+tensory-cuda = { path = "tensory-cuda" }
 
 lin-dev-deps = { path = "lin-dev-deps" }
 lin-dev-deps-build = { path = "lin-dev-deps-build" }
